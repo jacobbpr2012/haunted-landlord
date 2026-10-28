@@ -9,6 +9,10 @@
 <link rel="stylesheet" href="home.css">
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#170f2b">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 </head>
 <body>
 <main class="home">
@@ -55,11 +59,28 @@
     </article>
   </section>
 
+  <section class="trophy-room" aria-label="Trophy room">
+    <div class="tr-head">
+      <h2>Trophy Room</h2>
+      <span class="chip streak" id="streakChip">Day 1 streak</span>
+      <button class="chip" id="installChip" hidden>Install app</button>
+    </div>
+    <p class="tr-sub" id="trSub"></p>
+    <p class="tr-hint" id="iosHint" hidden>On iPhone or iPad: tap Share, then "Add to Home Screen" to install.</p>
+    <div class="tr-grid" id="trGrid"></div>
+    <div class="tr-stats">
+      <div class="tr-stat" id="statIdle"></div>
+      <div class="tr-stat" id="statSim"></div>
+    </div>
+  </section>
+
   <footer class="home-foot">
     <p>Both modes share the same world. Your Idle progress is saved in this browser.</p>
     <p style="margin-top:10px"><label for="themeSel">Theme </label><span id="themeBox"></span></p>
   </footer>
 </main>
+<script src="shared.js"></script>
+<script src="pwa.js"></script>
 <script src="home.js"></script>
 </body>
 </html>

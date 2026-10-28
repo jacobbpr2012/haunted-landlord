@@ -187,3 +187,41 @@ body.calm .pulse { animation: none; }
 body.calm .flit { animation: none; }
 
 .tag { color: #fff; }
+
+/* challenges, skill tree, journal, hunter minigame, day/night */
+.chal-bar { margin-top: 8px; background: linear-gradient(135deg, var(--ev1), var(--ev2)); border: 1px solid var(--pink); border-radius: var(--r); padding: 8px 12px; font-size: 13px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.chal-bar b { color: var(--pink); }
+.chal-bar .bar { grid-column: 1 / -1; margin-top: 0; }
+.chal-bar .btn { min-height: 32px; padding: 4px 12px; font-size: 12px; }
+.tbranch { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; margin-bottom: 8px; }
+.tbranch h4 { margin: 0 0 6px; font-size: 13px; color: var(--teal); text-transform: uppercase; letter-spacing: 1px; }
+.tnode { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 6px 0 6px 12px; border-left: 3px solid var(--line); margin-left: 4px; }
+.tnode + .tnode { margin-left: 16px; }
+.tnode + .tnode + .tnode { margin-left: 28px; }
+.tnode small { display: block; font-size: 12px; color: var(--dim); }
+.tnode.own { border-left-color: var(--gold); }
+.tnode.lock { opacity: .55; }
+.tnode .btn { min-width: 96px; font-size: 12px; padding: 6px 8px; min-height: 36px; }
+.row-item .qk { grid-column: 1; font-size: 12px; color: var(--dim); font-style: italic; opacity: .85; }
+.row-item .qk.on { color: var(--teal); opacity: 1; }
+.row-item .qk.bad.on { color: var(--warn); }
+.card .jr { font-size: 12px; color: var(--text); font-style: italic; margin-top: 6px; padding-left: 6px; border-left: 2px solid var(--gold); }
+.card .jr.next { color: var(--dim); border-left-color: var(--line); }
+.hunt-area { position: relative; height: 130px; background: color-mix(in srgb, var(--bg) 70%, transparent); border: 1px dashed var(--pink); border-radius: var(--r); overflow: hidden; }
+.hunt-score { font-size: 13px; margin-top: 6px; }
+.hg { position: absolute; width: 44px; height: 52px; padding: 0; border: 0; background: none; transform: translate(-50%, -50%); animation: hgin .18s ease-out, bob 1.2s ease-in-out infinite .18s; filter: drop-shadow(0 0 1.5px #000c) drop-shadow(0 0 1.5px #000c) drop-shadow(0 0 6px #fff6); }
+.hg svg { width: 100%; height: 100%; overflow: visible; }
+.hg:active { transform: translate(-50%, -50%) scale(.85); }
+.hg.calm { animation: hgin .18s ease-out; }
+@keyframes hgin { from { opacity: 0; scale: .4; } }
+.phase { font-size: 12px; cursor: default; }
+.phase:hover { background: var(--card); }
+.nstars { display: none; }
+body.night .nstars { display: inline; }
+body.night #scene { filter: brightness(.62) saturate(1.15) hue-rotate(8deg); }
+.nstars circle { animation: twinkle 3s ease-in-out infinite; }
+.nstars circle:nth-child(2n) { animation-delay: 1.1s; }
+.nstars circle:nth-child(3n) { animation-delay: 2s; }
+@keyframes twinkle { 50% { opacity: .35; } }
+body.calm .nstars circle { animation: none; }
+

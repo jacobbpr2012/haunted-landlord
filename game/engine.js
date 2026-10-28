@@ -28,12 +28,15 @@
       daily: { last: '', count: 0, freezes: 1 },
       comm: { cycle: 0, contrib: 0, claimed: false },
       settings: { sound: true, calm: false, notify: false },
-      stats: { eventsDone: 0, ghostsBought: 0, firstClick: false, timePlayed: 0, longestAway: 0, customized: 0, visits: 0, raceWins: 0 },
+      stats: { eventsDone: 0, ghostsBought: 0, firstClick: false, timePlayed: 0, longestAway: 0, customized: 0, visits: 0, raceWins: 0, hunterPerfect: 0, nightTime: 0 },
       codex: { lodgers: {}, seances: 0 },
       house: { theme: 'classic', door: 'wood', decor: [], pet: 'cat', seasons: {} },
       week: { cycle: 0, earned: 0, ref: D.RACE_MIN_REF, prev: 0, pending: null },
       visits: {},
       tutorial: { step: 0, done: false },
+      challenge: { active: null, done: {} },
+      tree: {},
+      lived: {},
     };
   }
 
@@ -120,9 +123,17 @@
         { label: '', labelFn: (g) => g.curSeason.yes + ' (costs 20s of rent)', do: (g) => { g.lose(g.income(20)); g.addBuff('Festive Spirit', 1.25, 'all', 90); return 'Everyone is delighted. Rent +25% for 90 seconds.'; } },
         { label: '', labelFn: (g) => g.curSeason.no, do: (g) => { const x = g.income(25); g.gain(x); return `Somebody left ${g.fmt(x)} on the porch as a bribe. Nobody asked.`; } },
       ] },
-    { id: 'hunter', title: 'Ghost Hunter!', need: (s, g) => g.totalGhosts() >= 3, tap: { need: 6, secs: 7 },
-      text: 'A GHOST HUNTER is at the door! Tap DEFEND fast to protect your tenants.',
+    { id: 'pests', title: 'Ecto-Exterminators', need: (s, g) => g.totalGhosts() >= 5,
+      text: 'A van marked "Spectral Pest Control: We Kill Everything Twice" is parked on the lawn. They say the house has "an infestation". They mean your tenants.',
+      choices: [
+        { label: 'Pay them off (costs 35s of rent)', do: (g) => { g.lose(g.income(35)); g.addBuff('Pest-Free Premium', 1.15, 'all', 120); return 'The exterminators leave a sticker on the door. Rent +15% for two minutes.'; } },
+        { label: 'Fight them (gamble)', do: (g) => { if (Math.random() < 0.55) { const x = g.income(100); g.gain(x); return `Rout! The van is yours. Salvage sold for ${g.fmt(x)}.`; } const x = g.lose(g.income(50)); g.addBuff('Fumigated', 0.85, 'all', 45); return `They had a bigger can. Cleanup: -${g.fmt(x)}, and rent -15% for 45s.`; } },
+      ] },
+    // Ghost hunter: a tap minigame. The engine decides spawns and scores, the UI only draws ev.hunt.ghosts.
+    { id: 'hunter', title: 'Ghost Hunter!', need: (s, g) => g.totalGhosts() >= 3, hunt: true,
+      text: 'A GHOST HUNTER is sweeping the house! Tap each ghost to hide it before it is spotted.',
       onWin: (g) => { const x = g.income(90); g.gain(x); return `Hunter repelled! Tenants chip in ${g.fmt(x)}.`; },
+      onPartial: (g, share) => { const x = g.income(40 * share); g.gain(x); return `Some tenants hid. The hunter left with a blurry photo. Tips: ${g.fmt(x)}.`; },
       onLose: (g) => { g.addBuff('Shaken Tenants', 0.8, 'all', 30); return 'The hunter spooked everyone. Rent -20% for 30 seconds.'; },
       choices: [] },
   ];
@@ -140,6 +151,10 @@
       this.slowTimer = 0;
       this.chadTimer = 20;
       this.chadMult = 1;
+      this.phase = null;          // 'day' | 'night' | null (null = not tracked, used by Node tools)
+      this.phaseOverride = null;
+      this.jCount = null;
+      this.inEvent = false;
       this.curSeason = null;
       this.seasonOverride = null;
       this.recalc(Date.now());
@@ -167,6 +182,29 @@
       if (S.eshop.eternal) offlineCap += 4 * 3600;
       if (S.eshop.interest) all *= 1.25;
       if (S.eshop.haggle) costMult = 0.9;
+      let evPay = 1, evFreq = 1, seanceMult = 1, lodgerX = 1;
+      for (const n of D.TREE) {
+        if (!S.tree[n.id]) continue;
+        const f = n.fx;
+        if (f.all) all *= f.all;
+        if (f.click) click *= f.click;
+        if (f.evPay) evPay *= f.evPay;
+        if (f.evFreq) evFreq *= f.evFreq;
+        if (f.seanceCost) seanceMult *= f.seanceCost;
+        if (f.lodger) lodgerX *= f.lodger;
+        if (f.offlineCap) offlineCap += f.offlineCap;
+      }
+      const ch = this.challengeDef();
+      let chMult = 1, noCodex = false, only = null;
+      if (ch) {
+        chMult = ch.mult;
+        if (ch.rules.costMult) costMult *= ch.rules.costMult;
+        if (ch.rules.evFast) evFreq /= ch.rules.evFast;
+        noCodex = !!ch.rules.noSeance;
+        only = ch.rules.only || null;
+      }
+      let chalDone = 1;
+      for (const id in S.challenge.done) chalDone *= 1 + D.CHALLENGE_BONUS;
       for (const b of S.buffs) {
         if (b.until <= now) continue;
         if (b.target === 'all') all *= b.mult; else gm[b.target] = (gm[b.target] || 1) * b.mult;
@@ -182,12 +220,15 @@
       const danAura = 1 + 0.02 * dan;
       const hoa = S.ghosts.hoa || 0, dol = S.ghosts.dolores || 0, ll = S.ghosts.landlord || 0;
       let lodgerSum = 0;
-      for (const id in S.codex.lodgers) if (D.LMAP[id]) lodgerSum += D.LODGER_BONUS[D.LMAP[id].rarity];
+      for (const id in S.codex.lodgers) if (D.LMAP[id]) lodgerSum += D.LODGER_BONUS[D.LMAP[id].rarity] * lodgerX;
       let setMult = 1;
       for (const f of D.FAMILIES) if (this.familyDone(f.id)) setMult *= 1 + f.set;
-      const codexMult = (1 + lodgerSum) * setMult * (1 + (this.simBonus || 0));
+      const codexMult = noCodex ? (1 + (this.simBonus || 0)) : (1 + lodgerSum) * setMult * (1 + (this.simBonus || 0));
       const seasonMult = this.curSeason ? this.curSeason.mult : 1;
-      const global = all * achMult * roomMult * essMult * codexMult * seasonMult * Math.pow(1.05, ll);
+      const night = this.phase === 'night';
+      if (this.phase === 'day') click *= D.NIGHT.click;
+      const phaseMult = night ? D.NIGHT.rent : 1;
+      const global = all * achMult * roomMult * essMult * codexMult * seasonMult * Math.pow(1.05, ll) * chMult * chalDone * phaseMult;
 
       const ghostRps = {};
       let rps = 0;
@@ -201,6 +242,9 @@
         if (hoa && d.id === 'dan') v *= 0.9;
         if (dol && d.id !== 'dolores') v *= 0.9;
         if (d.id === 'chad') v *= this.chadMult;
+        for (const q of D.QUIRKS) {
+          if ((q.a === d.id && S.ghosts[q.b]) || (q.b === d.id && S.ghosts[q.a])) v *= 1 + q.pct;
+        }
         v *= global;
         ghostRps[d.id] = v;
         rps += v;
@@ -210,15 +254,16 @@
         rps, ghostRps, global, costMult, offlineCap,
         offlineRate: Math.min(1.5, offline + 0.1 * acc),
         clickPower: click * global + rps * K.CLICK_RPS_SHARE,
-        essMult, achMult, roomMult, codexMult, seasonMult,
+        essMult, achMult, roomMult, codexMult, seasonMult, evPay, evFreq, seanceMult, only, chMult, chalDone, phaseMult,
       };
     }
 
-    income(secs) { return this.C.rps * secs; }
+    income(secs) { return this.C.rps * secs * (this.inEvent ? this.C.evPay : 1); }
     gain(x) { const S = this.S; x = Math.max(0, x); S.rent += x; S.total += x; S.run += x; S.week.earned += x; return x; }
     lose(x) { const S = this.S; x = Math.min(Math.max(0, x), S.rent); S.rent -= x; return x; }
     addBuff(label, mult, target, secs) {
       const now = Date.now();
+      if (this.inEvent && mult > 1) secs *= this.C.evPay;
       this.S.buffs.push({ label, mult, target, until: now + secs * 1000 });
       this.recalc(now);
     }
@@ -226,6 +271,7 @@
     // ---------- purchases ----------
     available(id) {
       const d = D.GMAP[id], S = this.S;
+      if (this.C.only && !this.C.only.includes(id)) return false;
       return !!d && d.cost != null && !!S.rooms[d.room];
     }
     growth(id) { return D.GMAP[id].growth || G; }
@@ -273,9 +319,10 @@
       const S = this.S;
       return !S.upgrades[u.id] && (!u.req || (S.ghosts[u.req.ghost] || 0) >= u.req.n);
     }
+    noUpgrades() { const c = this.challengeDef(); return !!(c && c.rules.noUpgrades); }
     buyUpgrade(id) {
       const S = this.S, u = D.UMAP[id];
-      if (!u || S.upgrades[id] || !this.upgradeVisible(u) || S.rent < u.cost) return false;
+      if (!u || S.upgrades[id] || this.noUpgrades() || !this.upgradeVisible(u) || S.rent < u.cost) return false;
       S.rent -= u.cost;
       S.upgrades[id] = true;
       this.recalc(Date.now());
@@ -324,6 +371,8 @@
       const x = this.C.rps * dt;
       if (x > 0) { S.rent += x; S.total += x; S.run += x; S.comm.contrib += x; S.week.earned += x; }
       S.stats.timePlayed += dt;
+      if (this.phase === 'night') S.stats.nightTime += dt;
+      for (const id in S.ghosts) if (S.ghosts[id] > 0) S.lived[id] = (S.lived[id] || 0) + dt;
       S.lastSeen = now;
 
       if (S.buffs.length && S.buffs.some((b) => b.until <= now)) {
@@ -339,7 +388,8 @@
         if (this.peteTimer <= 0) { this.peteTimer = 15; this.peteChaos(); }
       }
       if (this.ev) {
-        if (now > this.ev.until) this.expireEvent();
+        if (this.ev.hunt) this.huntStep(now);
+        if (this.ev && now > this.ev.until) this.expireEvent();
       } else {
         this.evTimer -= dt;
         if (this.evTimer <= 0) this.spawnEvent(now);
@@ -349,7 +399,7 @@
         if (this.chadTimer <= 0) { this.chadTimer = 20; this.chadSwing(); }
       }
       this.slowTimer += dt;
-      if (this.slowTimer >= 1) { this.slowTimer = 0; this.checkSeason(now); this.weekCheck(now); this.checkAchievements(now); }
+      if (this.slowTimer >= 1) { this.slowTimer = 0; this.checkSeason(now); this.weekCheck(now); this.checkChallenge(now); this.checkJournal(); this.checkAchievements(now); }
     }
 
     chadSwing() {
@@ -379,6 +429,7 @@
       this.recalc(now);
       const sec = Math.min(away, this.C.offlineCap);
       const x = this.gain(this.C.rps * sec * this.C.offlineRate);
+      for (const id in S.ghosts) if (S.ghosts[id] > 0) S.lived[id] = (S.lived[id] || 0) + sec;
       S.comm.contrib += x;
       S.lastSeen = now;
       S.stats.longestAway = Math.max(S.stats.longestAway, away);
@@ -396,14 +447,15 @@
       const def = EVENTS.find((e) => e.id === id);
       if (!def) return;
       this.lastEv = def.id;
-      this.ev = { id, def, until: now + (def.tap ? def.tap.secs : 45) * 1000, taps: 0,
+      this.ev = { id, def, until: now + 45 * 1000, hunt: null,
                   title: def.title_ ? def.title_(this) : def.title, text: def.text_ ? def.text_(this) : def.text,
                   labels: def.choices.map((c) => (c.labelFn ? c.labelFn(this) : c.label)) };
+      if (def.hunt) this.huntStart(now);
       this.emit('event', this.ev);
     }
     finishEvent(msg) {
       this.ev = null;
-      this.evTimer = rand(70, 130);
+      this.evTimer = rand(70, 130) * this.C.evFreq;
       this.S.stats.eventsDone++;
       this.recalc(Date.now());
       this.emit('eventEnd', {});
@@ -411,20 +463,63 @@
     }
     chooseEvent(i) {
       if (!this.ev || !this.ev.def.choices[i]) return;
-      this.finishEvent(this.ev.def.choices[i].do(this));
+      this.inEvent = true;
+      let msg;
+      try { msg = this.ev.def.choices[i].do(this); } finally { this.inEvent = false; }
+      this.finishEvent(msg);
     }
-    tapHunter() {
-      const e = this.ev;
-      if (!e || !e.def.tap) return;
-      e.taps++;
-      if (e.taps >= e.def.tap.need) this.finishEvent(e.def.onWin(this));
+    // ---------- ghost-hunter minigame ----------
+    // ev.hunt = { n, gap, life, t0, spawned, hidden, missed, ghosts: [{id, x, y, born, until}] }; times in ms.
+    huntStart(now) {
+      const H = D.HUNT, calm = this.S.settings.calm;
+      const n = calm ? H.calmN : H.n, gap = (calm ? H.calmGap : H.gap) * 1000, life = (calm ? H.calmLife : H.life) * 1000;
+      this.ev.hunt = { n, gap, life, t0: now, spawned: 0, hidden: 0, missed: 0, ghosts: [], calm, nextId: 1 };
+      this.ev.until = now + (n - 1) * gap + life + 1500;
+      this.huntStep(now);
+    }
+    huntStep(now) {
+      const h = this.ev && this.ev.hunt;
+      if (!h) return;
+      while (h.spawned < h.n && now >= h.t0 + h.spawned * h.gap) {
+        const born = h.t0 + h.spawned * h.gap;
+        h.ghosts.push({ id: h.nextId++, x: 8 + Math.random() * 84, y: 12 + Math.random() * 72, born, until: born + h.life });
+        h.spawned++;
+      }
+      const keep = [];
+      for (const gh of h.ghosts) { if (now >= gh.until) h.missed++; else keep.push(gh); }
+      h.ghosts = keep;
+      if (h.spawned >= h.n && !h.ghosts.length) this.huntEnd();
+    }
+    // Tap a ghost. Returns true if it was still there.
+    huntTap(gid) {
+      const h = this.ev && this.ev.hunt;
+      if (!h) return false;
+      const i = h.ghosts.findIndex((x) => x.id === gid);
+      if (i < 0) return false;
+      h.ghosts.splice(i, 1);
+      h.hidden++;
+      if (h.spawned >= h.n && !h.ghosts.length) this.huntEnd();
+      return true;
+    }
+    huntEnd() {
+      const e = this.ev, h = e.hunt, share = h.hidden / h.n;
+      this.inEvent = true;
+      let msg;
+      try {
+        if (h.hidden >= h.n) { this.S.stats.hunterPerfect++; msg = 'PERFECT! ' + e.def.onWin(this); }
+        else if (share >= D.HUNT.winShare) msg = e.def.onWin(this);
+        else if (h.hidden > 0) msg = e.def.onPartial(this, share);
+        else msg = e.def.onLose(this);
+      } finally { this.inEvent = false; }
+      this.finishEvent(msg);
+      this.checkAchievements(Date.now());
     }
     expireEvent() {
       const e = this.ev;
-      if (e.def.tap) this.finishEvent(e.def.onLose(this));
+      if (e.hunt) this.huntEnd();
       else {
         this.ev = null;
-        this.evTimer = rand(70, 130);
+        this.evTimer = rand(70, 130) * this.C.evFreq;
         this.emit('eventEnd', {});
         this.emit('toast', 'You ignored it. It ignored you back.');
       }
@@ -483,17 +578,96 @@
       S.essenceTotal += p;
       S.exorcisms++;
       S.lastExorcism = info;
+      this.resetRun();
+      this.checkAchievements(Date.now());
+      this.emit('exorcism', info);
+      return info;
+    }
+    // Wipes the run (rent, tenants, rooms, upgrades) without touching permanent progress.
+    resetRun() {
+      const S = this.S;
       S.rent = 0; S.run = 0;
       S.ghosts = {}; S.rooms = { parlor: true }; S.upgrades = {}; S.buffs = [];
       if (S.mabel) S.ghosts.mabel = 1;
-      if (S.eshop.headstart) { S.ghosts.gary = 5; S.seen.gary = true; }
+      this.recalc(Date.now());
+      if (S.eshop.headstart && this.available('gary')) { S.ghosts.gary = 5; S.seen.gary = true; }
       this.ev = null;
       this.evTimer = 90;
       this.emit('eventEnd', {});
       this.recalc(Date.now());
+    }
+
+    // ---------- haunting challenges ----------
+    challengeDef() { const a = this.S.challenge && this.S.challenge.active; return a ? D.CHMAP[a] : null; }
+    // Banks pending Essence first (a real Exorcism) when there is any, otherwise just resets the run.
+    startChallenge(id) {
+      const S = this.S;
+      if (!D.CHMAP[id] || S.challenge.active) return false;
+      if (this.pending() >= 1) this.exorcise(); else this.resetRun();
+      S.challenge.active = id;
+      this.recalc(Date.now());
+      this.emit('challenge', { id, state: 'start' });
+      return true;
+    }
+    abandonChallenge() {
+      const S = this.S;
+      if (!S.challenge.active) return false;
+      const id = S.challenge.active;
+      S.challenge.active = null;
+      this.recalc(Date.now());
+      this.emit('challenge', { id, state: 'abandon' });
+      return true;
+    }
+    checkChallenge(now) {
+      const c = this.challengeDef();
+      if (!c || this.S.run < c.goal) return false;
+      this.S.challenge.done[c.id] = now;
+      this.S.challenge.active = null;
+      this.recalc(now);
+      this.emit('challenge', { id: c.id, state: 'done' });
+      this.emit('toast', `Challenge complete: ${c.name}! ${c.win} Rent +${Math.round(D.CHALLENGE_BONUS * 100)}% forever.`);
+      this.checkAchievements(now);
+      return true;
+    }
+
+    // ---------- essence skill tree ----------
+    treeCanBuy(id) {
+      const n = D.TMAP[id], S = this.S;
+      return !!n && !S.tree[id] && S.essence >= n.cost && (!n.req || !!S.tree[n.req]);
+    }
+    buyTree(id) {
+      if (!this.treeCanBuy(id)) return false;
+      const n = D.TMAP[id], S = this.S;
+      S.essence -= n.cost;
+      S.tree[id] = true;
+      this.recalc(Date.now());
+      this.emit('buy', { kind: 'tree', id, cost: n.cost });
       this.checkAchievements(Date.now());
-      this.emit('exorcism', info);
-      return info;
+      return true;
+    }
+
+    // ---------- ghost journal ----------
+    journalCount(id) { const t = this.S.lived[id] || 0; return D.JOURNAL_AT.filter((x) => t >= x).length; }
+    journalTotal() { let n = 0; for (const id in D.JOURNAL) n += this.journalCount(id); return n; }
+    checkJournal() {
+      const n = this.journalTotal();
+      if (this.jCount === null) { this.jCount = n; return; }
+      if (n > this.jCount) { this.jCount = n; this.emit('toast', 'A new Ghost Journal entry has been filed. Check the Codex.'); }
+    }
+
+    // ---------- day / night ----------
+    isNight(now) {
+      if (this.phaseOverride) return this.phaseOverride === 'night';
+      const h = new Date(now).getHours();
+      return h >= D.NIGHT.from || h < D.NIGHT.to;
+    }
+    checkPhase(now) {
+      const p = this.isNight(now) ? 'night' : 'day';
+      if (p === this.phase) return false;
+      this.phase = p;
+      this.recalc(now);
+      this.emit('phase', p);
+      return true;
     }
 
     // ---------- daily haunting ----------
@@ -548,14 +722,15 @@
     familyDone(fid) { const f = D.FMAP[fid]; return f.members.length > 0 && this.familyFound(fid) === f.members.length; }
     setsDone() { return D.FAMILIES.filter((f) => this.familyDone(f.id)).length; }
     seasonalFound() { return D.LODGERS.filter((l) => l.season && this.S.codex.lodgers[l.id]).length; }
-    seanceCost() { return Math.ceil(D.SEANCE_BASE * Math.pow(D.SEANCE_GROWTH, this.lodgerCount())); }
+    seanceCost() { return Math.ceil(D.SEANCE_BASE * Math.pow(D.SEANCE_GROWTH, this.lodgerCount()) * this.C.seanceMult); }
+    seanceBlocked() { const c = this.challengeDef(); return !!(c && c.rules.noSeance); }
     seanceEligible() {
       const cur = this.curSeason && this.curSeason.id;
       return D.LODGERS.filter((l) => !this.S.codex.lodgers[l.id] && (!l.season || l.season === cur));
     }
     seance() {
       const S = this.S, pool = this.seanceEligible(), cost = this.seanceCost();
-      if (!pool.length || S.rent < cost) return null;
+      if (!pool.length || S.rent < cost || this.seanceBlocked()) return null;
       const cur = this.curSeason && this.curSeason.id;
       const w = pool.map((l) => D.SEANCE_WEIGHT[l.rarity] * (l.season && l.season === cur ? 3 : 1));
       let r = Math.random() * w.reduce((a, b) => a + b, 0), i = 0;
@@ -705,10 +880,21 @@
     // Share the discovered-ghost count with Simulator Mode and pick up its solved special guests.
     syncShared() {
       if (!SH || !this.storage) return;
-      SH.write({ idle: { count: this.lodgerCount() } }, this.storage);
+      SH.write({ idle: { count: this.lodgerCount(), ach: Object.keys(this.S.ach).length, achTotal: D.ACHIEVEMENTS.length,
+        exorcisms: this.S.exorcisms, challenges: Object.keys(this.S.challenge.done).length, total: this.S.total } }, this.storage);
       const guests = SH.read(this.storage).guests;
       this.simGuests = guests;
       this.simBonus = SH.simRentBonus(guests);
+    }
+    // Cross-mode daily bonus. SH.touchDay(now, storage) -> {streak, isNew} (idempotent per local day); called defensively.
+    crossDaily(now) {
+      if (!SH || typeof SH.touchDay !== 'function' || !this.storage || !this.S.stats.firstClick) return null;
+      let r = null;
+      try { r = SH.touchDay(now, this.storage); } catch (e) { return null; }
+      if (!r || !r.isNew) return null;
+      const x = this.gain(Math.max(50, this.income(120)));
+      this.emit('toast', `Cross-mode daily bonus: +${this.fmt(x)} rent. Streak: ${r.streak} day${r.streak === 1 ? '' : 's'} across both modes.`);
+      return { reward: x, streak: r.streak };
     }
     // Pull in guests solved by Simulator Mode while this tab is open (storage event). Does not write.
     refreshShared() {
@@ -733,7 +919,7 @@
       S.daily = Object.assign(base.daily, o.daily);
       S.comm = Object.assign(base.comm, o.comm);
       S.settings = Object.assign(base.settings, o.settings);
-      S.stats = Object.assign(base.stats, o.stats);
+      S.stats = Object.assign(base.stats, o.stats); for (const k in base.stats) if (typeof base.stats[k] === 'number' && !(typeof S.stats[k] === 'number' && isFinite(S.stats[k]))) S.stats[k] = base.stats[k];
       S.codex = Object.assign(base.codex, o.codex);
       S.codex.lodgers = Object.assign({}, o.codex && o.codex.lodgers);
       S.house = Object.assign(base.house, o.house);
@@ -744,6 +930,12 @@
       if (!D.CMAP.pet[S.house.pet]) S.house.pet = 'cat';
       S.week = Object.assign(base.week, o.week);
       S.visits = Object.assign({}, o.visits);
+      S.challenge = { active: o.challenge && D.CHMAP[o.challenge.active] ? o.challenge.active : null, done: {} };
+      if (o.challenge && o.challenge.done) for (const c of D.CHALLENGES) if (o.challenge.done[c.id]) S.challenge.done[c.id] = o.challenge.done[c.id];
+      S.tree = {};
+      if (o.tree) for (const n of D.TREE) if (o.tree[n.id]) S.tree[n.id] = true;
+      S.lived = {};
+      if (o.lived) for (const k in o.lived) if (D.GMAP[k] && isFinite(o.lived[k])) S.lived[k] = Math.max(0, +o.lived[k]);
       // Saves from before the tutorial existed: skip it for anyone who already played.
       S.tutorial = o.tutorial ? Object.assign(base.tutorial, o.tutorial) : { step: 0, done: !!(o.stats && o.stats.firstClick) };
       for (const k of ['ghosts', 'rooms', 'upgrades', 'eshop', 'ach', 'seen']) S[k] = Object.assign({}, o[k]);
@@ -766,6 +958,9 @@
     hardReset() {
       this.S = newState(Date.now());
       this.ev = null;
+      this.inEvent = false;
+      this.phase = null;
+      this.jCount = null;
       this.chadMult = 1;
       this.curSeason = null;
       this.checkSeason(Date.now());

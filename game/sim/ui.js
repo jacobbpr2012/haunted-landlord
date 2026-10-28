@@ -3,14 +3,21 @@
   'use strict';
   const D = window.SimData;
   const K = D.CONST;
-  const g = new window.SimEngine.Sim(window.localStorage);
+  const main = new window.SimEngine.Sim(window.localStorage);
+  let g = main;       // the Sim on screen: the main hotel, or a challenge run in its own save slot
+  let notice = main.takeNotice();
+  let codeMsg = '';
+  const Sim = window.SimEngine.Sim;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // Short form for the big header number so it fits on a phone in wide (monospace) themes.
   const compact = (n) => (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : Math.round(n).toLocaleString());
   const money = (n) => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString();
 
-  const TABS = [['desk', 'Desk'], ['upgrades', 'Upgrades'], ['staff', 'Staff'], ['properties', 'Properties'], ['group', 'Group'], ['books', 'Books'], ['stories', 'Stories'], ['settings', 'Settings']];
+  const TABS = [['desk', 'Desk'], ['upgrades', 'Upgrades'], ['staff', 'Staff'], ['properties', 'Properties'], ['group', 'Group'], ['books', 'Books'], ['reviews', 'Reviews'], ['stories', 'Stories'], ['challenges', 'Challenges'], ['settings', 'Settings']];
+  const CHAL_TABS = [['desk', 'Desk'], ['upgrades', 'Upgrades'], ['staff', 'Staff'], ['books', 'Books'], ['reviews', 'Reviews'], ['challenges', 'Challenge']];
+  const stars = (n) => '\u2605'.repeat(n) + '<i class="off">' + '\u2605'.repeat(5 - n) + '</i>';
+  const reviewHtml = (rv) => `<div class="rev"><b class="stars ${rv.stars >= 4 ? 'good' : rv.stars <= 2 ? 'bad' : ''}">${stars(rv.stars)}</b> <span class="who">${esc(rv.who)}${rv.room ? ', ' + esc(rv.room) : ''}, day ${rv.day}</span><div class="txt">"${esc(rv.text)}"</div></div>`;
   let tab = 'desk';
   let flash = '';   // one-line message shown at top of the desk
   let lastResult = null;
@@ -21,7 +28,11 @@
     $('cash').textContent = compact(S.cash);
     $('sub').textContent = S.debt ? 'Debt ' + money(S.debt) : 'No debt';
     $('dayChip').textContent = 'Day ' + S.day;
-    $('stageChip').textContent = ['', 'Stage 1: Solo desk', 'Stage 2: Staffed hotel', 'Stage 3: Departments', 'Stage 4: Group', 'Stage 5: Hotel group', 'Stage 6: Empire', 'Stage 7: Afterlife Empire'][S.stage] + (S.legacy ? ', Legacy ' + S.legacy : '');
+    const R = g.ratingAvg(), sea = g.season();
+    $('ratingChip').textContent = S.stars.length ? '\u2605 ' + R.toFixed(1) : '\u2605 --';
+    $('seasonChip').hidden = !sea; if (sea) $('seasonChip').textContent = sea.name;
+    $('stageChip').textContent = g.isChal() ? 'Challenge: ' + g.chalDef.name + ', day ' + Math.min(S.day, S.chal.days) + ' of ' + S.chal.days : ['', 'Stage 1: Solo desk', 'Stage 2: Staffed hotel', 'Stage 3: Departments', 'Stage 4: Group', 'Stage 5: Hotel group', 'Stage 6: Empire', 'Stage 7: Afterlife Empire'][S.stage] + (S.legacy ? ', Legacy ' + S.legacy : '');
+    document.body.classList.toggle('challenge', g.isChal());
     $('repComfort').style.width = S.comfort + '%';
     $('repSpook').style.width = S.spook + '%';
   }
@@ -43,14 +54,33 @@
       const rep = canAct && cost > 0 ? `<button class="btn ghosty" data-repair="${r.id}" ${S.cash >= cost ? '' : 'disabled'}>Repair ${money(cost)}</button>` : '';
       const lvl = rs.lvl || 0, lc = g.levelCost(r.id);
       const ren = canAct && lc > 0 ? ` <button class="btn ghosty" data-renovate="${r.id}" ${!gst && S.cash >= lc ? '' : 'disabled'} title="${gst ? 'Room must be empty' : 'Raises rent, raises upkeep'}">Renovate ${money(lc)}</button>` : '';
-      return `<div class="sroom"><h3>${esc(r.name)} <small>${D.TYPE_LABEL[r.type]}${lvl ? ' Lv' + lvl : ''}, ${money(Math.round(r.base * K.LEVEL_MULT[lvl]))}</small></h3>${body}` +
-        `<div class="bar ${rs.cond < 50 ? 'lowbar' : ''}"><i style="width:${rs.cond}%"></i></div><small>Condition ${rs.cond}%</small> ${rep}${ren}</div>`;
+      const th = rs.theme ? D.TMAP[rs.theme] : null, tc = g.themeCost(r.id);
+      const dress = canAct ? `<div class="thm"><small>Theme</small> <select data-dress="${r.id}" aria-label="Theme for ${esc(r.name)}"><option value="">Plain</option>` +
+        D.THEMES.map((t) => `<option value="${t.id}" ${rs.theme === t.id ? 'selected' : ''} ${rs.theme !== t.id && S.cash < tc ? 'disabled' : ''}>${esc(t.name)}${rs.theme === t.id ? '' : ' (' + money(tc) + ')'}</option>`).join('') + '</select></div>' : '';
+      const thNote = th ? `<div class="thmnote">${esc(th.name)}: ${esc(th.text)} Fans pay x${th.mult}.</div>` : '';
+      return `<div class="sroom ${th ? 'themed' : ''}"><h3>${esc(r.name)} <small>${D.TYPE_LABEL[r.type]}${lvl ? ' Lv' + lvl : ''}, ${money(Math.round(r.base * K.LEVEL_MULT[lvl]))}</small></h3>${body}` +
+        `<div class="bar ${rs.cond < 50 ? 'lowbar' : ''}"><i style="width:${rs.cond}%"></i></div><small>Condition ${rs.cond}%</small> ${rep}${ren}${thNote}${dress}</div>`;
     }).join('');
+  }
+
+  // Season, active income mods and any running crisis, shown on the plan screen.
+  function statusBanners() {
+    const S = g.S, sea = g.season();
+    let h = '';
+    if (sea) h += `<div class="banner season"><b>${esc(sea.name)}</b> is on: all income x${sea.mult}. ${esc(sea.decor)} Holiday guests and a limited-time story are in town.</div>`;
+    if (S.mods.length) h += '<div class="mods">' + S.mods.map((m) => `<span class="chip ${m.mult >= 1 ? 'sel' : 'bad'}">${esc(m.name)} x${m.mult}, ${m.left} day${m.left === 1 ? '' : 's'}</span>`).join('') + '</div>';
+    if (S.disaster) {
+      const dd = D.DMAP[S.disaster.id];
+      h += `<div class="banner crisis"><b>Crisis: ${esc(dd.name)}</b>, day ${Math.min(S.disaster.day + 1, dd.days.length)} of ${dd.days.length}. Severity ${S.disaster.sev} of 5. ${g.gmActive() && dd.gmOk ? 'Your General Manager will handle it.' : 'Expect a decision at the desk.'}</div>`;
+    }
+    return h;
   }
 
   function deskPlan() {
     const S = g.S, free = g.freeRooms();
     let h = flash ? `<div class="banner">${esc(flash)}</div>` : '';
+    if (notice) h += `<div class="banner good">${esc(notice)}</div>`;
+    h += statusBanners();
     if (S.review) h += `<div class="banner">Day ${K.REVIEW_DAY} review: grade ${S.review.grade}, score ${S.review.score}. Keep going, the hotel never closes.</div>`;
     h += `<p class="note">Day ${S.day}. Pick a rate, then place each arrival in a room. Anyone left in the lobby walks away.</p>`;
     h += '<div class="modes">' + K.RATES.map((r) => `<button class="chip ${S.rate === r.id ? 'on' : ''}" data-rate="${r.id}" title="${esc(r.note)}">${r.label}</button>`).join('') + '</div>';
@@ -61,9 +91,9 @@
       const gt = D.GMAP[a.type], refuse = g.refuses(a.type);
       const btns = free.map((r) => {
         const m = g.match(a.type, r.id);
-        return `<button class="btn ${m >= 0.5 ? '' : 'alt'}" data-assign="${a.id}:${r.id}" ${refuse ? 'disabled' : ''}>${esc(r.name)}<small>${g.matchLabel(m)}, ${money(g.roomIncome(r.id, { type: a.type }))}/night</small></button>`;
+        return `<button class="btn ${m >= 0.5 ? '' : 'alt'}" data-assign="${a.id}:${r.id}" ${refuse ? 'disabled' : ''}>${esc(r.name)}<small>${g.matchLabel(m)}${g.themed(r.id, a.type) ? ', loves the ' + esc(D.TMAP[S.rooms[r.id].theme].name) : ''}, ${money(g.roomIncome(r.id, { type: a.type }))}/night</small></button>`;
       }).join('');
-      return `<div class="arr"><div class="nm">${esc(gt.name)}</div><div class="sub">${gt.home ? 'Regular from ' + esc(gt.tag) + '. ' : ''}${D.WANT_TEXT[gt.want]}. Staying ${a.nights} night${a.nights > 1 ? 's' : ''}.${refuse ? ' Will not pay premium rates.' : ''}</div>` +
+      return `<div class="arr"><div class="nm">${esc(gt.name)}</div><div class="sub">${gt.home ? 'Regular from ' + esc(gt.tag) + '. ' : ''}${gt.season ? 'Holiday guest. ' : ''}${D.WANT_TEXT[gt.want]}. Staying ${a.nights} night${a.nights > 1 ? 's' : ''}.${refuse ? ' Will not pay premium rates.' : ''}</div>` +
         `<div class="rbtns">${btns || '<span class="note">No free rooms.</span>'}<button class="btn ghosty" data-away="${a.id}">Turn away</button></div></div>`;
     }).join('');
     const gm = g.gmActive();
@@ -90,6 +120,14 @@
       const def = D.BRANCH_EVENTS.find((x) => x.id === card.event), pd = g.propDef(card.prop), m = pd.rooms / 4;
       h += `<div class="scard"><h3>Escalation: ${esc(pd.name)}, ${esc(def.title)}</h3><p>${esc(def.text.replace('{p}', pd.name))}</p><div class="opts">` +
         def.opts.map((o, i) => { const c = Math.round(o.cash * m); return `<button class="btn ${i === 1 ? '' : 'ghosty'}" data-opt="${i}">${esc(o.t)}${c ? ` <small>(${c > 0 ? '+' : '-'}$${Math.abs(c)})</small>` : ''}</button>`; }).join('') + '</div></div>';
+    } else if (card && card.kind === 'vip') {
+      const v = D.VMAP[card.vip], step = v.steps[card.step], hi = g.hint(card);
+      h += `<div class="scard vip"><h3>VIP visit: ${esc(v.title)}, ${esc(v.guest)} (${card.step + 1} of ${v.steps.length})</h3><p>${esc(step.text)}</p><div class="opts">` +
+        step.opts.map((o, i) => `<button class="btn ghosty" data-opt="${i}">${esc(o.t)}${hi === i ? ' <small>(the Medium nods at this one)</small>' : ''}</button>`).join('') + '</div></div>';
+    } else if (card && card.kind === 'disaster') {
+      const dd = D.DMAP[card.id], m = g.costMult(), hi = g.hint(card);
+      h += `<div class="scard crisis"><h3>Crisis: ${esc(dd.name)}, day ${card.step + 1} of ${dd.days.length} (severity ${S.disaster.sev} of 5)</h3><p>${esc(dd.days[card.step])}</p><div class="opts">` +
+        dd.opts.map((o, i) => { const c = Math.round(o[1] * m); return `<button class="btn ghosty" data-opt="${i}">${esc(o[0])}${c ? ` <small>(-$${Math.abs(c)})</small>` : ''}${hi === i ? ' <small>(the Medium nods at this one)</small>' : ''}</button>`; }).join('') + '</div></div>';
     } else if (card && card.kind === 'story') {
       const story = D.STORIES.find((x) => x.id === card.story), step = story.steps[card.step];
       h += `<div class="scard story"><h3>${esc(story.title)}, day ${card.step + 1} of ${story.steps.length}</h3><p>${esc(step.text)}</p><div class="opts">` +
@@ -106,8 +144,14 @@
     let h = `<div class="sect">End of day ${L.day}</div><table class="tbl">` +
       `<tr><td>Room income</td><td class="good">${money(L.revenue)}</td></tr><tr><td>Upkeep</td><td>${money(-L.upkeep)}</td></tr>` +
       (L.wages ? `<tr><td>Wages</td><td>${money(-L.wages)}</td></tr>` : '') + (L.tax ? `<tr><td>Tax</td><td>${money(-L.tax)}</td></tr>` : '') +
-      (L.interest ? `<tr><td>Loan interest</td><td>${money(-L.interest)}</td></tr>` : '') +
+      (L.interest ? `<tr><td>Loan interest</td><td>${money(-L.interest)}</td></tr>` : '') + (L.disasterLoss ? `<tr><td>Crisis losses</td><td>${money(-L.disasterLoss)}</td></tr>` : '') +
       `<tr><td><b>Profit</b></td><td class="${L.profit >= 0 ? 'good' : 'bad'}"><b>${money(L.profit)}</b></td></tr></table>`;
+    if (L.disaster) h += `<div class="banner crisis"><b>${esc(L.disaster.name)}</b>, night ${L.disaster.day} of ${L.disaster.len}.${L.disaster.end ? ' ' + esc(L.disaster.end) : ''}</div>`;
+    if (L.reviews && L.reviews.length) {
+      const avg = L.reviews.reduce((a, r) => a + r.stars, 0) / L.reviews.length;
+      h += `<div class="sect">Reviews today (average ${avg.toFixed(1)}, overall ${S.stars.length ? g.ratingAvg().toFixed(1) : '--'} stars)</div>` + L.reviews.map(reviewHtml).join('');
+    }
+    if (L.challenge) h += challengeResult(L.challenge);
     if (L.bailout) h += `<div class="banner bad">Cash ran out. The bank lent you ${money(L.bailout)}. Repay it in Books.</div>`;
     if (L.branches && L.branches.length) {
       h += '<div class="sect">Other properties</div><table class="tbl"><tr><th>Property</th><th>Occupied</th><th>Profit</th></tr>' + L.branches.map((b) =>
@@ -126,7 +170,10 @@
     if (L.review) h += `<div class="banner">Day ${K.REVIEW_DAY} review: grade <b>${L.review.grade}</b> (score ${L.review.score}). The hotel stays open, keep growing.</div>`;
     if (L.checkouts.length) h += '<div class="sect">Check-outs</div>' + L.checkouts.map((c) => `<div class="logl">${esc(c.name)} left ${esc(c.room)}: <span class="${c.sat >= 60 ? 'good' : 'bad'}">${c.sat}% happy</span></div>`).join('');
     if (S.log.length) h += '<div class="sect">Log</div>' + S.log.map((l) => `<div class="logl">${esc(l)}</div>`).join('');
-    h += '<div style="margin-top:12px"><button class="btn" data-act="next">Start day ' + (S.day + 1) + '</button></div>';
+    if (S.chal && S.chal.done) {
+      if (!L.challenge) h += challengeResult({ id: S.chal.id, score: S.chal.score, ok: S.chal.ok, days: S.day, code: Sim.code(S.chal.id, S.chal.score, S.day) });
+      h += '<div style="margin-top:12px"><button class="btn" data-act="leavechal">Back to my hotel</button></div>';
+    } else h += '<div style="margin-top:12px"><button class="btn" data-act="next">Start day ' + (S.day + 1) + '</button></div>';
     return h;
   }
 
@@ -154,11 +201,15 @@
     const hired = Object.keys(S.morale).filter((id) => S.staff[id]).length;
     let h = '<p class="note">Staff are paid every night, whether or not the rooms are full. Morale drops a little each day. Below 40% they work worse, and at 10% they quit.</p>';
     if (hired) h += `<div class="row-item"><div class="nm">Staff party</div><div class="sub">+${D.MORALE.partyGain} morale for everyone. Once a day.</div><button class="btn" data-act="party" ${S.partyDay !== S.day && S.phase === 'plan' && S.cash >= g.partyCost() ? '' : 'disabled'}>${money(g.partyCost())}</button></div>`;
-    h += D.STAFF.map((s) => {
+    const noStaff = g.isChal() && g.chalDef.rules && g.chalDef.rules.noStaff;
+    if (noStaff) h += '<div class="banner">This challenge has no staff. Nobody can be hired.</div>';
+    const staffRow = (s) => {
       const locked = S.stage < s.stage;
       return `<div class="row-item ${locked ? 'owned' : ''}"><div class="nm">${esc(s.name)} <span class="tag Uncommon">${money(S.staff[s.id] ? g.wageOf(s.id) : s.wage)}/day</span></div><div class="sub">${esc(s.text)}${locked ? ' Unlocks at stage ' + s.stage + '.' : ''}${moraleLine(s.id)}</div>` +
-        `<button class="btn ${S.staff[s.id] ? 'ghosty' : ''}" data-staff="${s.id}" ${locked ? 'disabled' : ''}>${S.staff[s.id] ? 'Let go' : 'Hire'}</button></div>`;
-    }).join('');
+        `<button class="btn ${S.staff[s.id] ? 'ghosty' : ''}" data-staff="${s.id}" ${locked || (noStaff && !S.staff[s.id]) ? 'disabled' : ''}>${S.staff[s.id] ? 'Let go' : 'Hire'}</button></div>`;
+    };
+    h += D.STAFF.map(staffRow).join('');
+    h += '<div class="sect">Ghost staff</div><p class="note">Real ghosts on the payroll. Each has a perk nobody else offers, and a quirk to match. They use the same morale rules as everyone else.</p>' + D.GHOST_STAFF.map(staffRow).join('');
     if (S.stage < 3) {
       const p = Math.min(100, Math.round(Math.min(S.stats.revenue / K.STAGE3_REVENUE, 1) * 100));
       h += `<div class="sect">Stage 3: departments</div><p class="note">Earn ${money(K.STAGE3_REVENUE)} in total income and open ${K.STAGE3_ROOMS} rooms to add a front desk lead, chef, maintenance crew and a General Manager.</p><div class="bar"><i style="width:${p}%"></i></div><p class="note">${money(S.stats.revenue)} of ${money(K.STAGE3_REVENUE)}, ${g.ownedRooms().length} of ${K.STAGE3_ROOMS} rooms</p>`;
@@ -276,7 +327,7 @@
     h += '<div class="sect">Recent days</div>';
     h += S.ledger.length ? '<table class="tbl"><tr><th>Day</th><th>Income</th><th>Costs</th><th>Profit</th><th>Cash</th></tr>' + S.ledger.slice(-10).reverse().map((l) =>
       `<tr><td>${l.day}</td><td>${money(l.revenue)}</td><td>${money(l.expenses)}</td><td class="${l.profit >= 0 ? 'good' : 'bad'}">${money(l.profit)}</td><td>${money(l.cash)}</td></tr>`).join('') + '</table>' : '<p class="note">No days closed yet.</p>';
-    h += '<div style="margin-top:16px"><button class="btn ghosty" data-act="reset">Reset Simulator save</button></div>';
+    if (!g.isChal()) h += '<div style="margin-top:16px"><button class="btn ghosty" data-act="reset">Reset Simulator save</button></div>';
     return h;
   }
 
@@ -286,11 +337,58 @@
     return '<p class="note">Special guests arrive with problems of their own. Solving all three days earns a lasting perk. Solved guests also join your Idle Codex for bonus rent' +
       (idleB ? `, and your ${g.idleCount} Idle ghosts add +${(idleB * 100).toFixed(1)}% income here.` : '.') + '</p>' + D.STORIES.map((s) => {
       const p = S.stories[s.id];
-      const where = s.stage7 ? 'Reach stage 7' : s.prop ? 'Buy ' + g.propDef(s.prop).name : s.acq ? 'Buy ' + s.acq + ' rundown hotel' + (s.acq > 1 ? 's' : '') : 'Arrives around day ' + s.unlockDay;
-      const status = p && p.done ? (p.good === 3 ? 'Solved' : p.good === 2 ? 'Mostly solved' : 'Unresolved') : p ? 'In progress, day ' + (p.step + 1) : g.storyOpen(s) ? 'Arriving soon' : where;
-      const perk = S.perks[s.perk] ? `<br><span class="good">Perk: ${esc(s.perkText)}</span>` : '';
+      const where = s.season ? 'Limited time: ' + D.SEASON_MAP[s.season].name : s.stage7 ? 'Reach stage 7' : s.prop ? 'Buy ' + g.propDef(s.prop).name : s.acq ? 'Buy ' + s.acq + ' rundown hotel' + (s.acq > 1 ? 's' : '') : 'Arrives around day ' + s.unlockDay;
+      const status = p && p.done ? (p.good === s.steps.length ? 'Solved' : p.good >= s.steps.length - 1 ? 'Mostly solved' : 'Unresolved') : p ? 'In progress, day ' + (p.step + 1) : g.storyOpen(s) ? 'Arriving soon' : where;
+      const perk = s.season ? (p && p.done && p.good === s.steps.length ? `<br><span class="good">Bonus: ${esc(s.perkText)}</span>` : `<br><small>Reward: ${esc(s.perkText)}</small>`) : S.perks[s.perk] ? `<br><span class="good">Perk: ${esc(s.perkText)}</span>` : '';
       return `<div class="row-item ${p && p.done ? 'owned' : ''}"><div class="nm">${esc(s.title)}</div><div class="sub">${esc(s.guest)}. ${status}.${perk}</div></div>`;
     }).join('');
+  }
+
+  function reviewsTab() {
+    const S = g.S, n = S.stars.length;
+    if (!n) return '<p class="note">No reviews yet. Every guest writes one when they check out, and the average of the last ' + K.RATING_WINDOW + ' is your star rating. 4.3 or better brings an extra guest a day; under 2.8 costs you one. The rating also nudges room income up or down by a few percent.</p>';
+    const hist = [5, 4, 3, 2, 1].map((k) => { const c = S.stars.filter((x) => x === k).length; return `<div class="hrow"><span>${k} \u2605</span><div class="bar"><i style="width:${Math.round(c / n * 100)}%"></i></div><span>${c}</span></div>`; }).join('');
+    return `<div class="ratebig"><b>${g.ratingAvg().toFixed(1)}</b> <span class="stars">${stars(Math.round(g.ratingAvg()))}</span><small>from the last ${n} review${n === 1 ? '' : 's'}</small></div>` +
+      `<p class="note">${n < K.RATING_MIN ? 'The rating starts to matter after ' + K.RATING_MIN + ' reviews.' : 'Income modifier x' + g.ratingMult().toFixed(3) + '. 4.3 stars or more adds a guest a day; under 2.8 loses one.'}</p>` + hist +
+      '<div class="sect">Latest reviews</div>' + S.reviews.slice(0, 15).map(reviewHtml).join('');
+  }
+
+  function challengeResult(c) {
+    const def = D.CHMAP[c.id];
+    return `<div class="banner ${c.ok ? 'good' : ''}"><b>${esc(def.name)} finished.</b> Score ${c.score} (goal ${def.goal}): ${c.ok ? 'goal reached!' : 'goal missed. Try again?'}<br>` +
+      `Share code: <code>${esc(c.code)}</code> <button class="chip" data-copy="${esc(c.code)}">Copy code</button></div>`;
+  }
+
+  function savedChallenge() {
+    try { const o = JSON.parse(window.localStorage.getItem(K.CHAL_KEY) || 'null'); return o && o.chal ? o.chal : null; } catch (e) { return null; }
+  }
+
+  function challengesTab() {
+    const S = g.S;
+    if (g.isChal()) {
+      const def = g.chalDef, c = S.chal;
+      let h = `<div class="row-item"><div class="nm">${esc(def.name)}</div><div class="sub">${esc(def.text)} Goal: score ${def.goal}. Score = cash - debt + 3 x (comfort + spook) + 40 x stars + 50 x solved stories. Right now: <b>${g.challengeScore()}</b>. Same seed, same guests: the dice are fixed.</div></div>`;
+      h += `<p class="note">Day ${Math.min(S.day, c.days)} of ${c.days}. This run has its own save: your hotel is untouched.</p>`;
+      if (c.done) h += challengeResult({ id: c.id, score: c.score, ok: c.ok, days: S.day, code: Sim.code(c.id, c.score, S.day) });
+      h += '<div style="margin-top:12px"><button class="btn ghosty" data-act="leavechal">' + (c.done ? 'Back to my hotel' : 'Leave (the run stays saved)') + '</button> ' +
+        (c.done ? '' : '<button class="btn ghosty" data-act="abandon">Abandon this run</button>') + '</div>';
+      return h;
+    }
+    const rec = Sim.records(window.localStorage), sv = savedChallenge();
+    let h = '<p class="note">Fixed-seed scenarios: the same guests, events and crises every time, so scores can be compared. Each run uses a separate save, and your hotel is never touched.</p>';
+    h += D.CHALLENGES.map((c) => {
+      const b = rec[c.id], resume = sv && sv.id === c.id && !sv.done;
+      return `<div class="row-item"><div class="nm">${esc(c.name)} <span class="tag Uncommon">${c.days} days</span></div><div class="sub">${esc(c.text)} Goal: score ${c.goal}.${b ? ` Best: <b>${b.score}</b>${b.ok ? ' (goal reached)' : ''}, code <code>${esc(Sim.code(c.id, b.score, b.days))}</code> <button class="chip" data-copy="${esc(Sim.code(c.id, b.score, b.days))}">Copy</button>` : ' No attempts yet.'}</div>` +
+        `<button class="btn" data-chal="${c.id}">${resume ? 'Resume' : 'Start'}</button>${resume ? `<button class="btn ghosty" data-chalnew="${c.id}">Restart</button>` : ''}</div>`;
+    }).join('');
+    h += `<div class="sect">Compare a result</div><p class="note">Paste a code a friend shared (HLC1:...) to see how it stacks up.</p><div class="codebox"><input id="chalCode" type="text" placeholder="HLC1:solo:3200:30" maxlength="60" aria-label="Challenge result code"> <button class="btn" data-act="chk">Check</button></div>`;
+    if (codeMsg) h += `<div class="banner">${esc(codeMsg)}</div>`;
+    return h;
+  }
+
+  function startChal(id, fresh) {
+    g = new Sim(window.localStorage, { challenge: id, key: K.CHAL_KEY, fresh: !!fresh });
+    tab = 'desk'; flash = ''; lastResult = null; notice = null;
   }
 
   function settingsTab() {
@@ -302,7 +400,7 @@
   function body() {
     const S = g.S;
     if (tab === 'desk') return S.phase === 'plan' ? deskPlan() : S.phase === 'shift' ? deskShift() : deskSummary();
-    return { upgrades: upgradesTab, staff: staffTab, properties: propertiesTab, group: groupTab, books: booksTab, stories: storiesTab, settings: settingsTab }[tab]();
+    return { upgrades: upgradesTab, staff: staffTab, properties: propertiesTab, group: groupTab, books: booksTab, reviews: reviewsTab, stories: storiesTab, challenges: challengesTab, settings: settingsTab }[tab]();
   }
 
   // First-play tutorial coach: one tip at a time, advances as the player acts, skippable, replay in Settings.
@@ -317,8 +415,12 @@
 
   function render() {
     renderCoach(); header(); roomsPanel();
-    $('tabs').innerHTML = TABS.map((t) => `<button class="${tab === t[0] ? 'on' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('');
-    $('tabBody').innerHTML = body();
+    const tabs = g.isChal() ? CHAL_TABS : TABS;
+    if (!tabs.some((t) => t[0] === tab)) tab = 'desk';
+    $('tabs').innerHTML = tabs.map((t) => `<button class="${tab === t[0] ? 'on' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('');
+    const fl = tab !== 'desk' && flash ? `<div class="banner">${esc(flash)}</div>` : '';
+    if (fl) flash = '';
+    $('tabBody').innerHTML = fl + body();
   }
 
   document.addEventListener('click', (e) => {
@@ -330,6 +432,18 @@
     else if (d.act === 'tutorial') { g.tutorialReplay(); tab = 'desk'; }
     else if (d.tab) { tab = d.tab; }
     else if (d.rate) { g.setRate(Number(d.rate)); }
+    else if (d.chal) startChal(d.chal, false);
+    else if (d.chalnew) { if (window.confirm('Restart this challenge from day 1?')) startChal(d.chalnew, true); }
+    else if (d.act === 'leavechal') { g = main; tab = 'desk'; flash = ''; lastResult = null; }
+    else if (d.act === 'abandon') { if (window.confirm('Abandon this challenge run?')) { try { window.localStorage.removeItem(K.CHAL_KEY); } catch (err) { /* blocked */ } g = main; tab = 'challenges'; flash = ''; lastResult = null; } }
+    else if (d.act === 'chk') {
+      const inp = $('chalCode'), r = Sim.parseCode(inp && inp.value), rec = Sim.records(window.localStorage);
+      if (!r) codeMsg = 'That does not look like a challenge code. Codes look like HLC1:solo:3200:30.';
+      else { const def = D.CHMAP[r.id], b = rec[r.id]; codeMsg = def.name + ': score ' + r.score + ' in ' + r.days + ' days, ' + (r.score >= def.goal ? 'goal reached' : 'below the goal of ' + def.goal) + '. ' + (b ? (b.score >= r.score ? 'Your best (' + b.score + ') beats it.' : 'Your best (' + b.score + ') is behind it.') : 'You have not tried this one yet.'); }
+    }
+    else if (d.copy) {
+      try { window.navigator.clipboard.writeText(d.copy).then(() => { flash = 'Copied ' + d.copy; render(); }, () => { flash = 'Copy failed. Code: ' + d.copy; render(); }); } catch (err) { flash = 'Code: ' + d.copy; }
+    }
     else if (d.assign) { const [a, r] = d.assign.split(':'); const res = g.assign(Number(a), r); flash = res.ok ? '' : res.msg; }
     else if (d.away) g.turnAway(Number(d.away));
     else if (d.buyroom) g.buyRoom(d.buyroom);
@@ -339,7 +453,7 @@
     else if (d.upg) g.buyUpgrade(d.upg);
     else if (d.staff) { g.S.staff[d.staff] ? g.fire(d.staff) : g.hire(d.staff); }
     else if (d.opt !== undefined) lastResult = g.resolveCard(Number(d.opt));
-    else if (d.act === 'open') { flash = ''; lastResult = null; g.openDesk(); }
+    else if (d.act === 'open') { flash = ''; lastResult = null; notice = null; g.openDesk(); }
     else if (d.act === 'close') { g.closeDesk(); lastResult = null; }
     else if (d.act === 'next') { g.nextDay(); flash = ''; tab = 'desk'; }
     else if (d.act === 'repay') g.repay();
@@ -370,11 +484,21 @@
     render();
   });
 
+  // ?season=halloween (or winter, valentine, spring, summer) forces a season like Idle; ?season=none turns seasons off.
+  const forced = new URLSearchParams(location.search).get('season');
+  if (forced) { main.seasonOverride = forced; if (main.S.phase === 'plan' && main.S.stats.guests === 0) main.genArrivals(); }
   const dev = /[?&]dev=1/.test(location.search);
   if (dev) { $('devCash').hidden = false; $('devCash').addEventListener('click', () => { g.devCash(1000); render(); }); }
   if (location.search) $('homeLink').href = 'index.html' + location.search;
   // Live link: pick up Idle ghosts found in another tab without a reload.
   if (window.HLShared) window.HLShared.subscribe(() => { if (g.refreshShared()) render(); });
-  window.SIM = { g };
+  Object.defineProperty(window, 'SIM', { get: () => ({ g, main }) });
+  // Selecting a theme for a room uses a <select>, which fires change rather than click.
+  document.addEventListener('change', (e) => {
+    const sel = e.target && e.target.dataset && e.target.dataset.dress;
+    if (!sel) return;
+    g.dressRoom(sel, e.target.value);
+    g.save(); render();
+  });
   render();
 })();

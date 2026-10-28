@@ -333,6 +333,276 @@
     be('power', 'Power cut', 'The power at {p} is out. The ghosts do not mind, but the living guests do.', ['Hand out candles', -30, -2, 0], ['Run the generator', -150, 4, 1], ['Rent a bigger generator and comp the night', -380, 9, 2]),
   ];
 
+  // ======================================================================
+  // Round 4 content: reviews, VIPs, room themes, ghost staff, disasters, challenges, seasons.
+  // ======================================================================
+  Object.assign(D.CONST, {
+    CHAL_KEY: 'haunted_landlord_sim_challenge', CHAL_BEST_KEY: 'haunted_landlord_sim_challenge_best',
+    VIP_MIN_DAY: 6, VIP_GAP: 5, DISASTER_MIN_DAY: 8, DISASTER_GAP: 8, DISASTER_CHANCE: 0.035,
+    REVIEW_KEEP: 40, RATING_WINDOW: 20, RATING_MIN: 5, THEME_COST: 3,
+  });
+
+  // ---- 1. Reviews. Token: {room}. Five tiers by stars, plus add-ons by what the guest wanted. ----
+  D.REVIEWS = {
+    5: ['Best haunting I have ever paid for. Would die here again.',
+      'Spotless room, spotless ectoplasm. The landlord remembered my name, which was nice because I had forgotten it.',
+      'The bed was soft, the chains were quiet and the wallpaper only whispered a little.',
+      '{room} was to die for. I said that to reception and nobody laughed. Five stars for the honesty.',
+      'Came for one night, stayed for the atmosphere. Also the free biscuit.',
+      'The only hotel where the cold spots are a feature, not a fault.',
+      'I have been haunting hotels for 300 years. This one gets it.',
+      'Checked out feeling alive. Not literally. Still a compliment.'],
+    4: ['Lovely stay. Only complaint: the ghost next door sings flat. Otherwise charming.',
+      'Good value, clean room, mildly judgmental portrait. Would return.',
+      '{room} had real character, and a draught with opinions.',
+      'Friendly staff, decent breakfast, the eggs only looked at me twice.',
+      'Four stars. The fifth was lost in the laundry along with a towel and my sense of calm.',
+      'Solid hotel. The creaks were on time and the welcome was warm for a place this cold.',
+      'Nice, quiet, a bit pricey for a room with a resident wraith.',
+      'Would stay again. Please fix the doorknob that giggles.'],
+    3: ['It was fine. The room was fine. The ghost was fine. Everything was fine and I resent it.',
+      'Average. The mattress has seen things, mostly from underneath.',
+      'Three stars: one for the room, one for the view of a brick wall, one for not charging for the damp.',
+      'Nothing wrong with it, nothing memorable either, and I have a long memory.',
+      'The breakfast was lukewarm and so was the welcome.',
+      'Had a decent sleep once the chains stopped. Which took until four.',
+      'Clean enough. Spooky enough. Cheap enough. Enough.',
+      '{room} is adequate. Like a ghost, it is more about what is missing.'],
+    2: ['The room was damp, the staff were distracted and the mirror had opinions about my outfit.',
+      'Two stars because the bed existed.',
+      'I asked for a quiet room and got a choir. A very dead choir.',
+      'Towels like wet wool. Wifi password was BOO. Not recommended.',
+      '{room} had a smell I can only describe as regret with a hint of pennies.',
+      'Service was slow, and I have waited a century for better.',
+      'Paid for a haunting, got a draught. Paid for a draught, got a haunting.',
+      'Would not stay again, though the cat in the lobby was a gentleman.'],
+    1: ['Never again. I have been dead a long time and this was the worst night of it.',
+      'The room was falling apart and so was my patience.',
+      'One star, and only because the system will not let me give zero.',
+      'I asked to speak to the manager. The manager asked me to speak to the wall.',
+      '{room} is a crime scene waiting for a crime.',
+      'The chandelier fell. Nobody apologised. It did not even apologise.',
+      'Rude ghosts, cold soup, and a tip already added for a haunting I did not get.',
+      'I would rather haunt a bus shelter.'],
+  };
+  D.REVIEW_WANT = {
+    spooky: { hi: ['Great scares: the cellar knock arrived exactly on cue.', 'A proper haunting, with a flicker and everything.'], lo: ['Not nearly spooky enough. I have seen scarier laundry.', 'I came for a scare and left for a nap.'] },
+    quiet: { hi: ['So peaceful I almost forgot I was dead.', 'Peaceful corridors and no rattling. A miracle.'], lo: ['Not a moment of peace. Someone was moaning in the walls.', 'Nobody told me this was the loud ghost wing.'] },
+    cheap: { hi: ['Cheap and cheerful, mostly cheap.', 'Great value, and the breakfast was free, if you count the eggs.'], lo: ['Cheap, and you can tell, right down to the damp.', 'The savings were real. So was the draught.'] },
+    luxury: { hi: ['Proper luxury: velvet, brass and a ghost butler.', 'Felt like a mansion. A very haunted mansion.'], lo: ['For these prices I expected a better ghost.', 'Luxury? The robe had a moth in it and the moth had a review.'] },
+  };
+  D.REVIEW_CX = {
+    good: ['The staff sorted out my complaint right away.', 'They fixed my problem fast and with a smile.'],
+    bad: ['My complaint went nowhere, which is rude even for the living.', 'They ignored my complaint. I will not forget it. I do not forget anything.'],
+  };
+  D.REVIEW_ROOM = 'The room was in a state: peeling, dripping and possibly sulking.';
+
+  // ---- 2. VIP and inspector days: 3-step decision chains like stories. outcome: win (3/3), ok (2/3), bad (0-1). ----
+  const vo = (t, o) => Object.assign({ t, cash: 0, comfort: 0, spook: 0, stars: [] }, o || {});
+  D.VIPS = [
+    {
+      id: 'inspector', title: 'Health inspector', guest: 'Inspector Mildew',
+      steps: [
+        st('Inspector Mildew arrives unannounced with a clipboard and a gas mask. "Routine visit," she says, already sniffing the lobby.',
+          ['Hide the dust bunnies behind the sofa', 0, 'She finds them. They have names.'], ['Offer her tea to distract her', 0, 'She writes "bribery?" in the margin.'], ['Point out the problems yourself and walk her through', 1, 'She raises an eyebrow, then ticks a box.']),
+        st('In the kitchen she lifts the fridge door. Something inside lifts the lid right back.',
+          ['Show her the cleaning rota and the pest log', 1, 'She reads every line. Her pen warms up.'], ['Tell her the fridge is shy', 0, 'She writes "defensive fridge".'], ['Slam the door and change the subject', 0, 'The fridge slams back.']),
+        st('She finds a damp patch in Room 13 and asks for the repair plan.',
+          ['Say it is a feature', 0, 'She looks at you for a long time.'], ['Promise a fix by Friday and book the plumber on the spot', 1, 'She ticks the last box with a sigh.'], ['Offer a free night instead', 0, 'She calls that a bribe with a pillow.']),
+      ],
+      win: vo('Inspector Mildew awards a Gold Health Certificate. Guests trust you more.', { cash: 60, comfort: 4, stars: [5], mod: { name: 'Gold certificate', mult: 1.08, days: 6 } }),
+      ok: vo('The inspection passes with notes. Nobody is fined.', { comfort: 1 }),
+      bad: vo('A fine and a compliance notice on the front door.', { cash: -120, comfort: -3, stars: [2] }),
+    },
+    {
+      id: 'blogger', title: 'Travel blogger', guest: 'Skye Mortimer',
+      steps: [
+        st('A travel blogger with a ring light checks in and starts filming the lobby. "Hi ghouls, today we review The Worst Hotel I Have Ever Loved."',
+          ['Smile and offer a tour of the best bits', 1, 'She films your best chandelier. Subscribers wake up.'], ['Ask her to stop filming', 0, 'She films that too.'], ['Comp her suite to buy a good review', 0, 'She mentions it, on camera.']),
+        st('She wants a ghost for the camera. Every ghost in the walls has gone shy.',
+          ['Wear a bedsheet and hide behind the curtain', 0, 'She spots the sneakers.'], ['Tell her ghosts do not exist', 0, 'The lights flicker in disagreement.'], ['Ask the resident ghost to wave from the landing', 1, 'It waves. She gasps and zooms in.']),
+        st('The final shot: she asks for an honest closing line about the hotel.',
+          ['Let her say whatever she likes', 0, 'She says "haunting but damp".'], ['Offer a line: "Come for the ghosts, stay for the biscuits"', 1, 'She uses it as the title.'], ['Ask for final approval of the video', 0, 'She says that is not how the internet works.']),
+      ],
+      win: vo('The video goes viral. Bookings pour in.', { cash: 150, comfort: 2, spook: 3, stars: [5, 5], mod: { name: 'Viral video', mult: 1.15, days: 5 } }),
+      ok: vo('A pleasant video, a few thousand views.', { cash: 40, spook: 1 }),
+      bad: vo('The video is titled "Why I Will Not Return". Ouch.', { cash: -60, comfort: -2, stars: [1, 2] }),
+    },
+    {
+      id: 'rival', title: 'Rival hotelier', guest: 'Sir Percival Grandwick',
+      steps: [
+        st('Sir Percival Grandwick, owner of the rival Grand Cadaver Hotel, strolls in "just to look". He is clearly counting your exits.',
+          ['Give him the grand tour and all your secrets', 0, 'He takes notes.'], ['Welcome him politely, stay friendly but brief', 1, 'He is mildly disappointed there was no scandal.'], ['Throw him out', 0, 'He tells the press.']),
+        st('He offers to buy the hotel at a laughable price. "Think of it as a rescue."',
+          ['Accept to keep him quiet', 0, 'He is now your landlord for one awkward hour.'], ['Offer him a room for the night instead', 0, 'He takes the best suite.'], ['Counter with a price so high he laughs, then leaves', 1, 'He leaves with dignity and a new respect.']),
+        st('On the way out, his coat pocket hums. It is full of anonymous one-star reviews addressed to you.',
+          ['Pretend not to see', 0, 'He drops the habit. Not.'], ['Politely return the stack and mention you kept copies', 1, 'He turns pale as a sheet. He is partly a sheet.'], ['Burn the reviews on his coat', 0, 'The smoke alarm goes off for a week.']),
+      ],
+      win: vo('Sir Percival withdraws his smear campaign and sends a "gift basket" of apologies.', { cash: 220, comfort: 3, stars: [5] }),
+      ok: vo('A frosty truce.', { comfort: 1 }),
+      bad: vo('He badmouths you across the trade, and bookings dip.', { cash: -80, comfort: -3, stars: [2], mod: { name: 'Rival gossip', mult: 0.95, days: 5 } }),
+    },
+    {
+      id: 'hunters', title: 'Ghost hunting crew', guest: 'Ghost Hunters Live',
+      steps: [
+        st('The "Ghost Hunters Live" crew sets up cameras in every corridor. The host whispers into a microphone shaped like a shoe.',
+          ['Let them film but set ground rules', 1, 'They agree, mostly.'], ['Turn the cameras off at the wall', 0, 'They turn them back on.'], ['Join in and narrate', 0, 'Your voice ends up in the video.']),
+        st('At 2am the temperature drops. The host screams "Is anybody there?" and the whole hotel answers.',
+          ['Ask the ghosts to take it easy', 0, 'They take it as a challenge.'], ['Ask the ghosts for one proper appearance, then bedtime', 1, 'One ghost drifts across the landing. Everyone behaves.'], ['Ring the fire alarm', 0, 'Nobody sleeps, including the dead.']),
+        st('The host asks for the "real story" of the hotel.',
+          ['Make something up', 0, 'It comes out slightly wrong, on camera.'], ['Invent a grim tale involving a clown', 0, 'Two guests leave.'], ['Tell the true, slightly boring history with a wink', 1, 'He calls it "refreshing and haunting".']),
+      ],
+      win: vo('The episode trends. Ghost hunters book rooms for weeks.', { cash: 100, spook: 6, stars: [5], mod: { name: 'Ghost-hunter fans', mult: 1.12, days: 6 } }),
+      ok: vo('A modest episode, a few new bookings.', { spook: 2 }),
+      bad: vo('The episode shows a guest in curlers, labelled "THE GHOST".', { spook: -3, comfort: -2, stars: [2] }),
+    },
+    {
+      id: 'critic', title: 'Food critic', guest: 'Madame Gruel',
+      steps: [
+        st('A critic hides behind a menu and a fake moustache. You know because the moustache is on upside down.',
+          ['Serve the usual and pretend not to notice', 0, 'She gives you a thin smile.'], ['Pretend not to notice but quietly upgrade the breakfast', 1, 'Her fork pauses.'], ['Hide in the cellar', 0, 'She finds you there.']),
+        st('She prods the eggs. They prod back.',
+          ['Swap the eggs for a fresh batch with an apology', 0, 'She nods. Not enough.'], ['Say it is a house speciality', 0, 'She does not buy it.'], ['Offer a different dish with a story behind it', 1, 'She leans in, curious.']),
+        st('Dessert arrives. A single candle flickers beside the plate, on its own.',
+          ['Blow it out', 0, 'It relights, annoyed.'], ['Let it burn and say nothing', 1, 'She writes something short and underlined.'], ['Explain at length how it works', 0, 'She stops listening.']),
+      ],
+      win: vo('Madame Gruel writes a glowing column. Guests mention the breakfast for weeks.', { cash: 90, comfort: 5, stars: [5], mod: { name: 'Glowing column', mult: 1.1, days: 6 } }),
+      ok: vo('"Edible, in the right light."', { cash: 20, comfort: 1 }),
+      bad: vo('The review calls the hotel "a crime scene with eggs".', { comfort: -3, stars: [1] }),
+    },
+  ];
+  D.VMAP = {}; D.VIPS.forEach((v) => { D.VMAP[v.id] = v; });
+
+  // ---- 3. Room themes: cost = room base rent x THEME_COST. Liked guest types pay x mult and arrive a little happier. ----
+  D.THEMES = [
+    { id: 'castle', name: 'Haunted Castle', mult: 1.25, likes: ['tourist', 'hunter', 'vampire', 'gentry', 'count', 'mummies', 'trick'], text: 'Suits of armour, a moat in the bathtub.' },
+    { id: 'spa', name: 'Ghostly Spa', mult: 1.25, likes: ['weary', 'pensioner', 'banshees', 'skibunny', 'gondolier', 'lovebird', 'beachbum'], text: 'Cucumber slices on the eyes you may or may not have.' },
+    { id: 'scifi', name: 'Sci-Fi Pod', mult: 1.25, likes: ['influencer', 'salaryman', 'hunter', 'skeleton', 'cleaner'], text: 'Glowing panels and a beeping door that is definitely haunted.' },
+    { id: 'pirate', name: 'Pirate Cabin', mult: 1.25, likes: ['sailor', 'buccaneer', 'skeleton', 'salesman', 'tourist', 'carol'], text: 'Rope, rum bottles and a parrot who knows too much.' },
+    { id: 'tea', name: 'Victorian Tea Room', mult: 1.2, likes: ['pensioner', 'weary', 'regular', 'mummies', 'gentry', 'lovebird'], text: 'Doilies on everything, scones on nothing.' },
+  ];
+  D.TMAP = {}; D.THEMES.forEach((t) => { D.TMAP[t.id] = t; });
+
+  // ---- 4. Ghost staff: real ghosts on the payroll with unique perks and quirks. ----
+  // decay: morale loss multiplier. startMorale. partyMult: how much a staff party helps.
+  D.GHOST_STAFF = [
+    { id: 'poltergeist', name: 'Poltergeist Bellhop', wage: 45, stage: 2, ghost: true, text: 'Hurls luggage upstairs with style. Spooky-minded guests start 8 points happier, but some days he knocks something over and adds a complaint.' },
+    { id: 'spectral', name: 'Spectral Chef', wage: 85, stage: 3, ghost: true, decay: 1.25, text: 'Cooks for the departed: spooky and thrifty guests pay 10% more. Temperamental: morale falls 25% faster.' },
+    { id: 'accountant', name: 'Phantom Accountant', wage: 90, stage: 3, ghost: true, partyMult: 0.5, text: 'Slips through the walls into your books: loan interest and tax 20% lower. Hates parties, so a staff party helps him half as much.' },
+    { id: 'banshee', name: 'Banshee Concierge', wage: 70, stage: 3, ghost: true, startMorale: 55, text: 'Wails sweetly at checkout: a quarter of reviews gain a star. Moody: starts at 55 morale.' },
+    { id: 'watchman', name: 'Shade Night Watchman', wage: 60, stage: 3, ghost: true, text: 'Patrols the corridors: complaints 20% less likely and crisis damage 30% lower.' },
+    { id: 'medium', name: 'Resident Medium', wage: 100, stage: 3, ghost: true, text: 'Whispers the best answer on VIP visits and crises. Unreliable when morale is under 40.' },
+  ];
+  D.STAFFMAP = {}; D.STAFF.concat(D.GHOST_STAFF).forEach((s) => { D.STAFFMAP[s.id] = s; });
+
+  // ---- 5. Disasters: multi-day crises, one decision a day. Options: [label, cash, severity change]. Severity starts at 2. ----
+  // tick (per severity point, each night): cond = room condition lost, rev = share of income lost, comfort, sat = guest mood, arr = fewer arrivals tomorrow.
+  D.DISASTERS = [
+    { id: 'flood', name: 'Cellar flood', gmOk: true,
+      days: ['Day 1: The cellar is knee-deep in murky water and the cellar ghost is taking it personally.', 'Day 2: The water has reached the ground floor. The lobby rugs have set sail.', 'Day 3: The flood is finally draining, leaving damp walls and a smell of regret.'],
+      opts: [['Mop and pray', 0, 1], ['Hire pumps and mops', -90, 0], ['Bring in the full drainage crew', -220, -1]],
+      tick: { cond: 3, rev: 0.03, comfort: 0.5 }, scar: { name: 'Lingering damp', mult: 0.9, days: 10 }, scarCond: 12,
+      ends: { good: 'The cellar dries out and the damp is gone. Guests applaud your calm.', mid: 'The flood recedes. Some wallpaper is now soup.', bad: 'The flood leaves lasting damp. The reviews say so, at length.' } },
+    { id: 'blackout', name: 'Power cut', gmOk: true,
+      days: ['Day 1: The lights go out across the hotel. The ghosts are delighted, the guests less so.', 'Day 2: Still dark. The fridge is warming and the chef is lighting candles near the curtains.', 'Day 3: The grid flickers back, grudgingly.'],
+      opts: [['Hand out candles and hope', 0, 1], ['Rent a generator', -120, 0], ['Rent a big generator and comp the guests', -260, -1]],
+      tick: { rev: 0.06, comfort: 0.7 }, scar: { name: 'Dark reputation', mult: 0.92, days: 8 },
+      ends: { good: 'The lights return and so does the applause. You become the calm hotel in a storm.', mid: 'Power is back. The ghosts liked it better before.', bad: 'The hotel spent three nights in the dark and guests remember the stairs.' } },
+    { id: 'outbreak', name: 'Ghost outbreak', gmOk: false,
+      days: ['Day 1: The ghosts are multiplying. Three extra apparitions have moved into Room 13 without booking.', 'Day 2: The extras are throwing a party in the corridor. Guests complain about "too much haunting".', 'Day 3: One final holdout is refusing to leave, claiming squatter rights.'],
+      opts: [['Let them stay, it is good for business', 0, 1], ['Send polite eviction notices', -70, 0], ['Hold a negotiated amnesty with cake', -180, -1]],
+      tick: { sat: 3, rev: 0.02, comfort: 0.8 }, scar: { name: 'Overhaunted', mult: 0.9, days: 8 },
+      ends: { good: 'The outbreak ends with a toast, a cake and a respectable waiting list of ghosts.', mid: 'The spare ghosts have gone home. Mostly.', bad: 'Guests flee "the overcrowded dead". Several unfriendly reviews appear.' } },
+    { id: 'smear', name: 'Rival smear campaign', gmOk: false,
+      days: ['Day 1: Fake reviews appear overnight: "The hotel is haunted. By cockroaches." Someone is paying for these.', 'Day 2: A local paper picks up the story. Bookings drop.', 'Day 3: The campaign peaks with a billboard: "Do Not Stay at The Last Vacancy".'],
+      opts: [['Ignore it, it will blow over', 0, 1], ['Publish a calm, factual reply', -80, 0], ['Run a counter-campaign with proof and a good offer', -240, -1]],
+      tick: { arr: 1, rev: 0.02, comfort: 0.4, fake: 1 }, scar: { name: 'Bad press', mult: 0.92, days: 10 },
+      ends: { good: 'The smear backfires and the press loves your reply. Sympathy bookings roll in.', mid: 'The story dies down. Your reputation is a little scuffed.', bad: 'The campaign sticks. It will take weeks to scrub off.' } },
+  ];
+  D.DMAP = {}; D.DISASTERS.forEach((x) => { D.DMAP[x.id] = x; });
+
+  // ---- 6. Challenge scenarios: fixed seed, fixed length, a goal score. rules: noStaff, oneRoom, disasterMult. ----
+  // Score = cash - debt + 3 x (comfort + spook) + 40 x star rating + 50 x solved stories.
+  D.CHALLENGES = [
+    { id: 'solo', name: 'Solo Shift', days: 30, seed: 13013, goal: 2400, rules: { noStaff: true }, text: '30 days, nobody on the payroll. No staff of any kind, ghosts included. Just you, the bell and the dust.' },
+    { id: 'oneroom', name: 'One-Room Wonder', days: 21, seed: 21021, goal: 1150, startCash: 600, rules: { oneRoom: true }, text: '21 days with one room and no way to buy another. Renovate, theme and charm your way to the top.' },
+    { id: 'crash', name: 'Budget Crash', days: 30, seed: 40404, goal: 800, startCash: 60, startDebt: 1200, text: '30 days starting with $60 in the till and $1,200 of debt at 3% interest. Dig out and finish in the black.' },
+    { id: 'storm', name: 'Perfect Storm', days: 30, seed: 66606, goal: 1800, startCash: 900, rules: { disasterMult: 6 }, text: '30 days where crises keep coming and the VIPs smell blood. Cash helps, calm helps more.' },
+  ];
+  D.CHMAP = {}; D.CHALLENGES.forEach((x) => { D.CHMAP[x.id] = x; });
+
+  // ---- 7. Seasons (dates copied from Idle). Each has holiday guests, decor, a limited-time story and a rent bonus. ----
+  D.SEASONS = [
+    { id: 'winter', name: 'Frostbitten Holidays', start: [12, 15], end: [1, 2], mult: 1.1, decor: 'Tinsel on the portraits and a wreath on the bell.', review: 'Festive touch: tinsel on the portraits.' },
+    { id: 'valentine', name: 'Lovelorn Haunts', start: [2, 7], end: [2, 21], mult: 1.1, decor: 'Paper hearts on every key and a rose on the pillows.', review: 'Romantic: someone left a ghost rose on my pillow.' },
+    { id: 'spring', name: 'Spring Cleaning Spirits', start: [3, 20], end: [4, 5], mult: 1.1, decor: 'Windows open, cobwebs politely asked to leave.', review: 'Smelled of fresh polish and fresh spirits.' },
+    { id: 'summer', name: 'Beach Bash Banshees', start: [7, 1], end: [7, 15], mult: 1.1, decor: 'A beach ball in the lobby and a puddle called the pool.', review: 'The beach decor was a nice touch, if the sand was optional.' },
+    { id: 'halloween', name: 'Halloween Hauntfest', start: [10, 15], end: [11, 2], mult: 1.15, decor: 'Pumpkins on every windowsill. The pumpkins stare back.', review: 'Full Halloween spirit, and the pumpkins stared at me all night.' },
+  ];
+  D.SEASON_MAP = {}; D.SEASONS.forEach((s) => { D.SEASON_MAP[s.id] = s; });
+  D.seasonAt = function (now, forceId) {
+    if (forceId && D.SEASON_MAP[forceId]) return D.SEASON_MAP[forceId];
+    const d = new Date(now), v = (d.getMonth() + 1) * 100 + d.getDate();
+    for (const s of D.SEASONS) {
+      const a = s.start[0] * 100 + s.start[1], b = s.end[0] * 100 + s.end[1];
+      if (a <= b ? (v >= a && v <= b) : (v >= a || v <= b)) return s;
+    }
+    return null;
+  };
+  D.GUESTS.push(
+    { id: 'carol', name: 'Carol Singer Banshee', want: 'luxury', nights: [1, 2], weight: 3, pay: 1.3, season: 'winter', tag: 'Frostbitten Holidays' },
+    { id: 'lovebird', name: 'Lovelorn Spectre', want: 'quiet', nights: [2, 3], weight: 3, pay: 1.3, season: 'valentine', tag: 'Lovelorn Haunts' },
+    { id: 'cleaner', name: 'Spring Cleaning Poltergeist', want: 'cheap', nights: [1, 2], weight: 3, pay: 1.2, cheap: true, season: 'spring', tag: 'Spring Cleaning Spirits' },
+    { id: 'beachbum', name: 'Beach Bum Banshee', want: 'quiet', nights: [1, 3], weight: 3, pay: 1.25, season: 'summer', tag: 'Beach Bash Banshees' },
+    { id: 'trick', name: 'Trick-or-Treat Troop', want: 'spooky', nights: [1, 2], weight: 3, pay: 1.4, season: 'halloween', tag: 'Halloween Hauntfest' },
+  );
+  D.GUESTS.forEach((x) => { D.GMAP[x.id] = x; });
+  // Limited-time stories (2 steps). Solve one for a 14-day income bonus. They only arrive while their season is on.
+  D.STORIES.push(
+    { id: 'marley', title: 'The carol that never ends', guest: 'Old Marley Wick', season: 'winter', perkText: 'Marley leaves a festive glow: +12% income for 14 days.',
+      steps: [
+        st('A ghostly carol singer has been stuck on the same verse in your lobby for three nights. The guests have started humming back.',
+          ['Hand over a mug of cocoa', 0, 'He sings louder.'], ['Ask what the second verse was', 1, '"I... forgot," he says, shocked.'], ['Close the lobby doors', 0, 'He sings through them.']),
+        st('You find a dusty songbook behind the radiator. The second verse is there, smudged.',
+          ['Hand him the book and hum the tune', 1, 'He sings the second verse. The lobby glows.'], ['Read it aloud, badly', 0, 'He winces.'], ['Auction the book', 0, 'The tinsel turns on you.']),
+      ],
+      endings: { good: 'Old Marley finishes the carol. The lobby smells of cinnamon and guests tip generously.', ok: 'Marley hums the last bar and fades. A small tip is left under the cocoa.', bad: 'Marley sings the same verse until spring.' } },
+    { id: 'rosalind', title: 'Love letters under the door', guest: 'Lady Rosalind', season: 'valentine', perkText: 'Rosalind\'s blessing: +12% income for 14 days.',
+      steps: [
+        st('Love letters keep appearing under doors, addressed to "Whoever Is Still Here". They are all signed R.',
+          ['Return them unopened', 0, 'They come back.'], ['Read one and follow the room number it mentions', 1, 'It points to Room 3.'], ['Pin them on the notice board', 0, 'R. goes pink. Ghosts can.']),
+        st('In Room 3, a ghostly woman at a writing desk is stuck on the last line of a reply.',
+          ['Offer a rhyme for "forever"', 1, 'She writes it down and smiles.'], ['Tell her the postage is overdue', 0, 'She sighs.'], ['Tell her to hurry up', 0, 'The ink dries out.']),
+      ],
+      endings: { good: 'The letter is sent. Hearts bloom on the wallpaper and guests linger.', ok: 'Rosalind finishes the reply, mostly, and leaves a rose.', bad: 'The letters keep coming. Most are rude now.' } },
+    { id: 'mopwell', title: 'The great spring clean', guest: 'Mrs. Mopwell', season: 'spring', perkText: 'Mrs. Mopwell leaves the place gleaming: +12% income for 14 days.',
+      steps: [
+        st('Mrs. Mopwell, a ghostly cleaner, is dusting every surface in the hotel. Twice. She will not stop until "the Event".',
+          ['Ask what the Event is', 1, '"The Spring Inspection of 1923," she says. "It never came."'], ['Hide the dusters', 0, 'She uses her sleeve.'], ['Pay her to stop', 0, 'She cleans around the money.']),
+        st('You find the 1923 inspection form in a drawer, unsigned.',
+          ['Fail her out of spite', 0, 'Dust falls from the ceiling.'], ['Sign it and grade her Excellent', 1, 'She weeps tears of polish.'], ['Ask her to dust it first', 0, 'She does, for an hour.']),
+      ],
+      endings: { good: 'Mrs. Mopwell rests her duster. The whole hotel gleams.', ok: 'Mrs. Mopwell mostly stops. The hotel is cleaner than ever.', bad: 'Mrs. Mopwell dusts louder.' } },
+    { id: 'lance', title: 'The lifeguard of the bathtub', guest: 'Lifeguard Lance', season: 'summer', perkText: 'Lance keeps the pool safe: +12% income for 14 days.',
+      steps: [
+        st('A tanned lifeguard stands over a hotel bathtub, whistle in mouth, watching it carefully. Nobody is in it. Nobody has been in it since 1987.',
+          ['Tell him it is a bathtub', 0, 'He blows the whistle.'], ['Ask who he is watching', 1, '"The kid from 1987. He never came back up," he whispers.'], ['Fill it with bubbles', 0, 'He panics.']),
+        st('At the bottom of the tub you find a small rubber duck labelled "Kyle, age 8". Lance weeps with relief.',
+          ['Hand him the duck and say Kyle swam home', 1, 'He lowers the whistle at last.'], ['Keep the duck, it is cute', 0, 'The tap runs a very sad drip.'], ['Flush it', 0, 'The pipes shriek.']),
+      ],
+      endings: { good: 'Lance hangs up the whistle. The pool is safe, and the guests love the story.', ok: 'Lance leaves the tub, still a little wary.', bad: 'Lance still guards the bath. Check-ins are quiet.' } },
+    { id: 'jack', title: 'The pumpkin that watched', guest: 'Jack Pumpkinhead', season: 'halloween', perkText: 'Jack lights the way: +12% income for 14 days.',
+      steps: [
+        st('A glowing pumpkin on the porch follows guests with its eyes. Its carved grin is slightly different every morning.',
+          ['Smash it', 0, 'It grins wider.'], ['Ask the pumpkin what it wants', 1, '"A candle that lasts until dawn," a voice says.'], ['Light it and walk away', 0, 'It goes out in a huff.']),
+        st('It is nearly midnight. The pumpkin cannot keep its flame lit in the draught.',
+          ['Shield the flame with your hands until dawn', 1, 'You do. It is warm and slightly smoky.'], ['Move it by the radiator', 0, 'It sulks.'], ['Replace it with a lantern', 0, 'It looks hurt.']),
+      ],
+      endings: { good: 'Jack burns bright until dawn. Trick-or-treaters talk about it for weeks.', ok: 'Jack glows a little, and the porch is spookier than before.', bad: 'Jack goes dark. The porch is just a porch.' } },
+  );
+
+  D.TUTORIAL[D.TUTORIAL.length - 1].text += ' Every guest leaves a review at check-out: keep your star rating high and more guests will find you.';
+
   root.SimData = D;
   if (typeof module !== 'undefined' && module.exports) module.exports = D;
 })(typeof window !== 'undefined' ? window : globalThis);

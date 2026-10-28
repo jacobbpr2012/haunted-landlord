@@ -9,6 +9,9 @@
 <link rel="stylesheet" href="sim.css">
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#170f2b">
+<link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
 <div id="app">
@@ -24,6 +27,8 @@
     <div class="tools">
       <a class="chip" href="index.html" id="homeLink">Home</a>
       <span class="chip" id="dayChip">Day 1</span>
+      <span class="chip" id="ratingChip" title="Guest star rating">&#9733; --</span>
+      <span class="chip" id="seasonChip" hidden></span>
       <span class="chip" id="stageChip">Stage 1: Solo desk</span>
       <button id="devCash" class="chip" hidden>+$1000 (dev)</button>
     </div>
@@ -51,5 +56,6 @@
 <script src="sim/data.js"></script>
 <script src="sim/engine.js"></script>
 <script src="sim/ui.js"></script>
+<script src="pwa.js"></script>
 </body>
 </html>

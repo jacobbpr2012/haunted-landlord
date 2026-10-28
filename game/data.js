@@ -136,6 +136,13 @@
     { id: 'manager', name: 'Property Manager', desc: 'Deal with 5 tenant incidents.', test: (s) => s.stats.eventsDone >= 5 },
     { id: 'exorcist', name: 'Notice of Exorcism', desc: 'Perform your first Exorcism.', test: (s) => s.exorcisms >= 1 },
     { id: 'slept', name: 'Sleeping on the Job', desc: 'Come back after being away for an hour or more.', test: (s) => s.stats.longestAway >= 3600 },
+    { id: 'chal1', name: 'Rule Breaker', desc: 'Complete a Haunting Challenge.', test: (s) => Object.keys(s.challenge.done).length >= 1 },
+    { id: 'chalAll', name: 'Rules Lawyer', desc: 'Complete every Haunting Challenge.', test: (s) => D.CHALLENGES.every((c) => s.challenge.done[c.id]) },
+    { id: 'hunterPerfect', name: 'Perfect Defense', desc: 'Hide every ghost from a ghost hunter.', test: (s) => s.stats.hunterPerfect >= 1 },
+    { id: 'tree3', name: 'Skill Issue (Solved)', desc: 'Learn 3 skills in the Essence tree.', test: (s) => Object.keys(s.tree).length >= 3 },
+    { id: 'treeAll', name: 'Doctor of Hauntology', desc: 'Learn every skill in the Essence tree.', test: (s) => D.TREE.every((n) => s.tree[n.id]) },
+    { id: 'nightOwl', name: 'Night Owl', desc: 'Spend 10 minutes haunting at night.', test: (s) => s.stats.nightTime >= 600 },
+    { id: 'diary', name: 'Dear Diary', desc: 'Read 10 Ghost Journal entries.', test: (s, g) => g.journalTotal() >= 10 },
     { id: 'cellar', name: 'Basement of the Basement', desc: 'Patience is a virtue of the dead.', secret: true, test: (s) => s.cellar },
     { id: 'nightshift', name: 'Night Shift', desc: 'Some tenants keep unusual hours.', secret: true, test: (s) => s.mabel },
   ];
@@ -166,10 +173,83 @@
     owner: ['Gary', 'Sir Boo-Boo', 'Lady Beatrix', 'Count Spookula', 'Mabel', 'Dolores', 'Disco Dan', 'Pete'],
   };
 
+  // ---------- Haunting Challenges: rule-twist runs. mult = rent x while active; goal = run earnings needed. ----------
+  // rules: costMult (tenant prices x), noUpgrades, noSeance, only (allowed ghost ids), evFast (incidents arrive x faster)
+  D.CHALLENGE_BONUS = 0.05; // permanent rent each, multiplicative
+  D.CHALLENGES = [
+    { id: 'pricey', name: 'Pricey Poltergeists', mult: 3, goal: 3e10, rules: { costMult: 2 },
+      desc: 'Tenants cost double. Rent is tripled to make up for it. The ghosts have heard of inflation.', win: 'The ghosts paid double to live here. They call it "premium haunting".' },
+    { id: 'silent', name: 'Silent Seances', mult: 2, goal: 2e10, rules: { noSeance: true },
+      desc: 'No Seances and no Codex bonuses. The dead are on a quiet-hours policy. Rent x2.', win: 'The Codex grumbles but forgives you. It was never that chatty anyway.' },
+    { id: 'skeleton', name: 'Skeleton Crew', mult: 4, goal: 3e10, rules: { only: ['gary', 'beatrix', 'dan', 'pete'] },
+      desc: 'Only Gary, Beatrix, Dan and Pete are available. Rent x4. Budget cuts have reached the afterlife.', win: 'A skeleton crew, a full ledger. HR has questions about the word "crew".' },
+    { id: 'noupg', name: 'No Upgrades', mult: 2, goal: 4e8, rules: { noUpgrades: true },
+      desc: 'The renovation budget is frozen. Rent x2. The floorboards stay creaky out of sheer spite.', win: 'You fixed nothing and profited anyway. A true landlord move.' },
+    { id: 'mabel', name: "Mabel's Night Shift", mult: 2.5, goal: 3e10, rules: { evFast: 3 },
+      desc: 'Incidents arrive three times as often while Mabel runs the night shift. Rent x2.5. Bring snacks.', win: 'Mabel signs off: "Fourteen crises, zero refunds. Pleasure working with you."' },
+  ];
+
+  // ---------- Prestige skill tree (second Essence sink). req must be earlier in the list. ----------
+  D.TREE_BRANCHES = [
+    { id: 'rent', name: 'Rent' }, { id: 'haunt', name: 'Haunting' }, { id: 'lodge', name: 'Lodgers' },
+  ];
+  // fx: all (rent x), click (click x), evPay (incident reward x), evFreq (incident timer x), seanceCost (x), lodger (lodger bonus x), offlineCap (+sec)
+  D.TREE = [
+    { id: 'r1', br: 'rent', name: 'Better Bookkeeping', cost: 3, fx: { all: 1.08 }, desc: 'All rent +8%.' },
+    { id: 'r2', br: 'rent', name: 'Compound Interest', cost: 6, req: 'r1', fx: { all: 1.12 }, desc: 'All rent +12%.' },
+    { id: 'r3', br: 'rent', name: 'Landlord Legacy', cost: 12, req: 'r2', fx: { all: 1.2 }, desc: 'All rent +20%.' },
+    { id: 'h1', br: 'haunt', name: 'Sturdy Doorbell', cost: 3, fx: { click: 1.5 }, desc: 'Click power x1.5.' },
+    { id: 'h2', br: 'haunt', name: 'Hospitality Training', cost: 6, req: 'h1', fx: { evPay: 1.5 }, desc: 'Incident rewards and buffs +50%.' },
+    { id: 'h3', br: 'haunt', name: 'Reputation for Chaos', cost: 12, req: 'h2', fx: { evFreq: 0.7, evPay: 1.25 }, desc: 'Incidents come 30% sooner and pay another 25%.' },
+    { id: 'l1', br: 'lodge', name: 'Discount Candles', cost: 3, fx: { seanceCost: 0.75 }, desc: 'Seances cost 25% less.' },
+    { id: 'l2', br: 'lodge', name: 'Spirit Whisperer', cost: 6, req: 'l1', fx: { lodger: 1.5 }, desc: 'Lodger rent bonuses +50%.' },
+    { id: 'l3', br: 'lodge', name: 'Open House', cost: 12, req: 'l2', fx: { offlineCap: 6 * 3600, seanceCost: 0.8 }, desc: '+6h offline cap, Seances another 20% cheaper.' },
+  ];
+
+  // ---------- Tenant quirks: friends/feuds. Both owned = rent change on BOTH. ----------
+  D.QUIRKS = [
+    { a: 'gary', b: 'dan', pct: 0.05, line: 'Gary thinks Dan is "a great guy, really loud".' },
+    { a: 'beatrix', b: 'accountant', pct: 0.05, line: 'Beatrix and the Accountant share a love of quiet, receipts and disapproval.' },
+    { a: 'pete', b: 'accountant', pct: -0.05, line: "Pete keeps throwing the Accountant's stapler. The Accountant is itemizing it." },
+    { a: 'karen', b: 'hoa', pct: -0.08, line: 'Karen and the HOA Spirit are in a Cold War over the shared lawn.' },
+    { a: 'chad', b: 'dolores', pct: -0.06, line: 'Dolores asked Chad to "get a real job". He has a podcast. It did not help.' },
+    { a: 'hoa', b: 'landlord', pct: 0.05, line: "The HOA Spirit adores the Landlord's Landlord. Finally, someone with paperwork." },
+  ];
+
+  // ---------- Ghost Journal: three entries per main ghost, unlocked by time lived (seconds, across Exorcisms). ----------
+  D.JOURNAL_AT = [600, 3600, 18000];
+  D.JOURNAL = {
+    gary: ['Day 1. Asked where the Wi-Fi is. Was told "dead people do not need Wi-Fi". Rude.', 'Found out I am dead. Taking it well. Mostly asked about the Wi-Fi again.', 'Made a friend. It is a doorknob. We get along. It does not ask about rent.'],
+    beatrix: ['Entry I. The draught persists. I have written to the Housing Authority of 1887.', 'Entry LVII. Another tenant owns a shiny hat and no shame. I remain composed.', 'Entry CCC. I have decided to haunt a chair in perfect silence. The landlord may take that as thanks.'],
+    dan: ['Hosted a party. Guests: me. Vibe: immaculate.', 'The landlord says the "disco ball" is a "fire hazard". It is a lifestyle.', 'Night 400 of the Party. Still no guests. Staying optimistic. The floor is lava.'],
+    pete: ['Broke a lamp. It was looking at me.', 'Broke the lamp again. Got a new lamp. Had a moment with the lamp. Broke it.', 'The landlord has stopped buying lamps. I now throw the pillows. Everyone is learning.'],
+    accountant: ['Reconciled the cellar. Found 4 cents. Considering a victory dance.', 'Discovered the landlord pays "in vibes" on the 31st. Escalating to the Bureau of Ghosts.', 'Tax season again. I have never felt more alive. Technically not true. I cherish it anyway.'],
+    mabel: ['Arrived at 12:03 AM. Nobody asked why. Good.', 'I have a key to every room. I have a key to rooms that do not exist. Do not ask.', 'The landlord thinks I pay rent. I think the landlord pays me, in worry. We are even.'],
+    karen: ['Asked to see the manager. The manager is "also the maintenance guy". Unacceptable.', 'Left a review: "Would not haunt again." Immediately booked another stay.', 'The manager gave me a coupon. I am keeping it. Nobody will ever know how much I enjoy this.'],
+    hoa: ['Measured the grass. It is 2 cm too long. This has been so since 1962.', 'Issued a violation for a violation. Cannot find a rule against it. Drafting one.', 'The landlord may have flowers if they are spooky in an approved shade of grey.'],
+    chad: ['Day 1. Rent paid in coin. Landlord asked "what coin". Bro.', 'Down 90 percent. This is just a dip. Told Dolores. Dolores laughed.', 'My podcast has 0 listeners. The dead cannot hear it. I am calling that "exclusive".'],
+    dolores: ['Rearranged the doilies. The landlord moved them back. We have a situation.', 'Forty years ago this house ran on a handshake and one lamp. Now there is a ledger. Progress.', 'You are doing well, young landlord. I will deny saying that in any court, living or dead.'],
+    landlord: ['Sent an invoice. It was addressed to the house. The house paid it.', "Raised everyone's rent. Nobody noticed. Raised it again. Still nobody.", 'There is a landlord above me too. We do not talk about them. They send very polite letters.'],
+  };
+
+  // ---------- Ghost-hunter minigame: ghosts to tap before they vanish (seconds). ----------
+  D.HUNT = { n: 8, gap: 0.9, life: 1.7, calmN: 6, calmGap: 1.4, calmLife: 3.6, winShare: 0.7 };
+
+  // ---------- Day / night (local clock hours) ----------
+  D.NIGHT = { from: 19, to: 6, rent: 1.1, click: 1.1 };
+
   D.GMAP = {};
   D.GHOSTS.forEach((g) => { D.GMAP[g.id] = g; });
   D.RMAP = {};
   D.ROOMS.forEach((r) => { D.RMAP[r.id] = r; });
+  D.CHMAP = {};
+  D.CHALLENGES.forEach((c) => { D.CHMAP[c.id] = c; });
+  D.TMAP = {};
+  D.TREE.forEach((n) => { D.TMAP[n.id] = n; });
+  D.CHMAP = {};
+  D.CHALLENGES.forEach((c) => { D.CHMAP[c.id] = c; });
+  D.TMAP = {};
+  D.TREE.forEach((n) => { D.TMAP[n.id] = n; });
   D.UMAP = {};
   D.UPGRADES.forEach((u) => { D.UMAP[u.id] = u; });
 

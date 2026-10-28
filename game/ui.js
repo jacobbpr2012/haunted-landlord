@@ -94,6 +94,7 @@
     return `<defs><linearGradient id="${pfx}sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.sky[0]}"/><stop offset="1" stop-color="${T.sky[1]}"/></linearGradient></defs>
       <rect width="400" height="150" fill="url(#${pfx}sky)"/>
       <g fill="#fff" opacity=".8"><circle cx="40" cy="22" r="1.4"/><circle cx="120" cy="14" r="1"/><circle cx="250" cy="26" r="1.3"/><circle cx="300" cy="12" r="1"/><circle cx="210" cy="10" r="1.2"/><circle cx="70" cy="50" r="1"/></g>
+      <g class="nstars" fill="#fff"><circle cx="20" cy="40" r="1.3"/><circle cx="95" cy="30" r="1.1"/><circle cx="150" cy="18" r="1.4"/><circle cx="180" cy="44" r="1"/><circle cx="230" cy="14" r="1.2"/><circle cx="276" cy="8" r="1"/><circle cx="310" cy="30" r="1.3"/><circle cx="376" cy="12" r="1.1"/><circle cx="60" cy="70" r="1"/><circle cx="360" cy="80" r="1.2"/></g>
       <g data-egg="moon" class="egg"><circle cx="340" cy="42" r="22" fill="#f6f1c7"/><circle cx="331" cy="36" r="5" fill="#e4dea6"/><circle cx="348" cy="50" r="4" fill="#e4dea6"/></g>
       <g data-egg="chimney" class="egg"><rect x="262" y="40" width="26" height="60" fill="#2c1e45"/><rect x="258" y="36" width="34" height="8" fill="#3a2a5a"/><circle class="smoke" cx="275" cy="26" r="6" fill="#8a7aa8" opacity=".5"/><circle class="smoke s2" cx="281" cy="14" r="8" fill="#8a7aa8" opacity=".35"/></g>
       <polygon points="10,150 200,46 390,150" fill="${T.roof[0]}" stroke="${T.roof[1]}" stroke-width="3"/>
@@ -210,19 +211,27 @@
 
   // ---------- tabs: tenants ----------
   let tenantRefs = {};
+  const qpct = (p) => (p > 0 ? '+' : '') + Math.round(p * 100) + '%';
+  function quirkHtml(id) {
+    return D.QUIRKS.filter((q) => q.a === id || q.b === id).map((q) => {
+      const other = D.GMAP[q.a === id ? q.b : q.a];
+      return `<div class="sub qk ${q.pct < 0 ? 'bad' : ''}" data-qa="${q.a}" data-qb="${q.b}">${q.pct > 0 ? 'Friend' : 'Feud'}: ${esc(q.line)} (${qpct(q.pct)} rent for both when ${esc(other.name)} lives here)</div>`;
+    }).join('');
+  }
   function buildTenants() {
     const S = g.S;
     let h = `<div class="modes">${[1, 10, 'max'].map((m) => `<button class="chip ${m === buyMode ? 'on' : ''}" data-act="mode" data-m="${m}">${m === 'max' ? 'Max' : 'x' + m}</button>`).join('')}</div>`;
     for (const d of D.GHOSTS) {
       if (d.id === 'mabel' && !S.mabel) continue;
       const open = g.available(d.id);
-      h += `<div class="row-item ${d.cost == null ? 'owned' : ''}" data-gid="${d.id}"><div><span class="nm">${d.name}</span><span class="tag ${d.rarity}">${d.rarity}</span> <b class="cnt"></b></div><div class="sub"></div>${d.cost != null ? `<button class="btn" data-act="buy" data-id="${d.id}"></button>` : ''}</div>`;
+      h += `<div class="row-item ${d.cost == null ? 'owned' : ''}" data-gid="${d.id}"><div><span class="nm">${d.name}</span><span class="tag ${d.rarity}">${d.rarity}</span> <b class="cnt"></b></div><div class="sub"></div>${quirkHtml(d.id)}${d.cost != null ? `<button class="btn" data-act="buy" data-id="${d.id}"></button>` : ''}</div>`;
       void open;
     }
     $('tabBody').innerHTML = h;
     tenantRefs = {};
     document.querySelectorAll('[data-gid]').forEach((row) => {
       tenantRefs[row.dataset.gid] = { cnt: row.querySelector('.cnt'), sub: row.querySelector('.sub'), btn: row.querySelector('button') };
+      row.querySelectorAll('.qk').forEach((q) => { q.classList.toggle('on', !!(g.S.ghosts[q.dataset.qa] && g.S.ghosts[q.dataset.qb])); });
     });
     refreshTenants();
   }
@@ -236,6 +245,8 @@
       const each = n ? g.C.ghostRps[d.id] / n : d.base * g.C.global;
       r.sub.textContent = `${d.quirk}  -  each pays ~${fmt(each, 1)}/s`;
       if (!r.btn) continue;
+      row_qk(d.id);
+      if (g.C.only && !g.C.only.includes(d.id)) { r.btn.textContent = 'Off duty'; r.btn.disabled = true; r.btn.classList.add('off'); continue; }
       if (!g.available(d.id)) {
         const room = D.ROOMS.find((x) => x.id === d.room);
         r.btn.textContent = 'Unlock ' + room.name.replace('The ', ''); r.btn.disabled = true; r.btn.classList.add('off');
@@ -246,6 +257,11 @@
       r.btn.textContent = `Move in${q > 1 ? ' x' + q : ''} - ${fmt(cost)}`;
       r.btn.disabled = cost > S.rent; r.btn.classList.toggle('off', r.btn.disabled);
     }
+  }
+
+  function row_qk(id) {
+    const row = tenantRefs[id] && tenantRefs[id].sub && tenantRefs[id].sub.parentNode;
+    if (row) row.querySelectorAll('.qk').forEach((q) => { q.classList.toggle('on', !!(g.S.ghosts[q.dataset.qa] && g.S.ghosts[q.dataset.qb])); });
   }
 
   // ---------- tabs: upgrades ----------
@@ -267,7 +283,8 @@
   function buildUpgrades() {
     const vis = visibleUpgrades();
     upgKey = vis.map((u) => u.id).join();
-    let h = vis.length ? '' : '<p class="note">Nothing to renovate right now. More ideas arrive as you move in new tenants.</p>';
+    let h = g.noUpgrades() ? '<p class="note">Renovations are frozen by your active challenge. The floorboards stay creaky.</p>' : '';
+    if (!vis.length) h += '<p class="note">Nothing to renovate right now. More ideas arrive as you move in new tenants.</p>';
     for (const u of vis) {
       h += `<div class="row-item ${u.cursed ? 'cursed' : ''}" data-uid="${u.id}"><div><span class="nm">${u.name}</span>${u.cursed ? '<span class="tag cursed">Cursed</span>' : ''}</div><div class="sub">${describeFx(u.fx, u.cursed)}<br><i>${u.flavor}</i></div><button class="btn" data-act="upg" data-id="${u.id}">${fmt(u.cost)}</button></div>`;
     }
@@ -280,14 +297,16 @@
     refreshUpgrades();
   }
   function refreshUpgrades() {
-    document.querySelectorAll('[data-act=upg]').forEach((b) => { const u = D.UMAP[b.dataset.id]; b.disabled = g.S.rent < u.cost; b.classList.toggle('off', b.disabled); });
+    const nu = g.noUpgrades();
+    document.querySelectorAll('[data-act=upg]').forEach((b) => { const u = D.UMAP[b.dataset.id]; b.disabled = nu || g.S.rent < u.cost; b.classList.toggle('off', b.disabled); });
   }
 
   // ---------- tabs: exorcism ----------
+  function chalProgress(c) { return Math.min(1, g.S.run / c.goal); }
   function buildExorcism() {
-    const S = g.S, p = g.pending();
-    let h = `<div class="card"><h3>Exorcism</h3><p>Evict every ghost, reset the house, and keep a permanent bonus. Each Spectral Essence you have ever earned gives +10% rent (growth slows after 100). Essence is also spent in the shop below.</p>
-      <p style="margin-top:8px">This run: <b>${fmt(S.run)}</b> rent. Exorcism now would give <span class="big" style="font-size:20px">+${p}</span> Spectral Essence.</p>
+    const S = g.S, p = g.pending(), act = g.challengeDef();
+    let h = `<div class="card"><h3>Exorcism</h3><p>Evict every ghost, reset the house, and keep a permanent bonus. Each Spectral Essence you have ever earned gives +10% rent (growth slows after 100). Essence is also spent in the shop and skill tree below.</p>
+      <p style="margin-top:8px">This run: <b id="exRun">${fmt(S.run)}</b> rent. Exorcism now would give <span class="big" style="font-size:20px">+${p}</span> Spectral Essence.</p>
       <p>Next Essence at <b>${fmt(Math.pow(p + 1, 2) * D.CONST.ESS_DIV)}</b> rent this run.</p>
       <button class="btn alt" data-act="exorcise" ${p < 1 ? 'disabled' : ''} style="margin-top:8px">${p < 1 ? 'Keep earning...' : 'Perform Exorcism'}</button></div>
       <div class="sect">Spectral Essence shop - you have ${S.essence}</div>`;
@@ -295,14 +314,59 @@
       const owned = S.eshop[e.id];
       return `<div class="row-item ${owned ? 'owned' : ''}"><div><span class="nm">${e.name}</span></div><div class="sub">${e.desc}</div><button class="btn" data-act="ess" data-id="${e.id}" ${owned || S.essence < e.cost ? 'disabled' : ''}>${owned ? 'Owned' : e.cost + ' Essence'}</button></div>`;
     }).join('');
+    h += `<div class="sect">Essence skill tree - you have ${S.essence}</div><p class="note">A second place to spend Essence. Each branch must be learned in order.</p>`;
+    for (const br of D.TREE_BRANCHES) {
+      h += `<div class="tbranch"><h4>${br.name}</h4>`;
+      for (const n of D.TREE.filter((x) => x.br === br.id)) {
+        const own = S.tree[n.id], locked = n.req && !S.tree[n.req];
+        h += `<div class="tnode ${own ? 'own' : ''} ${locked ? 'lock' : ''}"><div><b>${n.name}</b><small>${n.desc}${locked ? ' Needs ' + D.TMAP[n.req].name + '.' : ''}</small></div><button class="btn" data-act="tree" data-id="${n.id}" ${own || locked || S.essence < n.cost ? 'disabled' : ''}>${own ? 'Learned' : n.cost + ' Essence'}</button></div>`;
+      }
+      h += '</div>';
+    }
+    h += `<div class="sect">Haunting Challenges</div><p class="note">Optional rule-twist runs. Starting one resets your house like an Exorcism (any pending Essence is banked first). Reach the goal to lift the rules and earn +${Math.round(D.CHALLENGE_BONUS * 100)}% rent forever. Abandoning costs nothing but the run.</p>`;
+    for (const c of D.CHALLENGES) {
+      const done = S.challenge.done[c.id], on = act && act.id === c.id;
+      h += `<div class="row-item ${done ? 'owned' : ''}"><div><span class="nm">${c.name}</span> <span class="tag Uncommon">x${c.mult} rent</span></div><div class="sub">${c.desc}<br>Goal: earn <b>${fmt(c.goal)}</b> rent in one run.${on ? ` <b id="chalPct">${Math.floor(chalProgress(c) * 100)}%</b>` : ''}</div>
+        <button class="btn ${on ? 'alt' : ''}" data-act="${on ? 'abandon' : 'chal'}" data-id="${c.id}" ${(act && !on) ? 'disabled' : ''}>${done ? 'Done - replay' : on ? 'Abandon' : 'Start'}</button></div>`;
+    }
     $('tabBody').innerHTML = h;
   }
+  function chalBarRender() {
+    const c = g.challengeDef(), bar = $('chalBar');
+    if (!c) { bar.hidden = true; bar.dataset.k = ''; return; }
+    if (bar.dataset.k !== c.id) {
+      bar.dataset.k = c.id; bar.hidden = false;
+      bar.innerHTML = `<span><b>Challenge: ${esc(c.name)}</b> - ${esc(c.desc)}</span><button class="btn ghosty" data-act="abandon">Abandon</button><div class="bar"><i id="chalFill" style="width:0%"></i></div><span id="chalTxt"></span>`;
+    }
+    const f = $('chalFill'), t = $('chalTxt');
+    if (f) f.style.width = (chalProgress(c) * 100).toFixed(1) + '%';
+    if (t) t.textContent = `${fmt(g.S.run)} / ${fmt(c.goal)} rent this run`;
+    const pct = $('chalPct'); if (pct) pct.textContent = Math.floor(chalProgress(c) * 100) + '%';
+  }
+  function confirmChallenge(id) {
+    const c = D.CHMAP[id], p = g.pending();
+    modal(`<h2>Start "${esc(c.name)}"?</h2><p>${esc(c.desc)}</p><p>Goal: earn <b>${fmt(c.goal)}</b> rent in one run. Reward: rent +${Math.round(D.CHALLENGE_BONUS * 100)}% forever (once per challenge).</p><p>Your house resets right now${p >= 1 ? `, and you bank <span class="big" style="font-size:20px">+${p}</span> Spectral Essence first` : ''}.</p>`, [
+      { label: 'Not now', cls: 'ghosty' }, { label: 'Begin', cls: 'alt', fn: () => { g.startChallenge(id); } }]);
+  }
+  function confirmAbandon() {
+    modal('<h2>Abandon the challenge?</h2><p>The rules lift and your run carries on as normal, but there is no reward.</p>', [
+      { label: 'Keep going', cls: 'ghosty' }, { label: 'Abandon', cls: 'alt', fn: () => { g.abandonChallenge(); } }]);
+  }
+  $('chalBar').addEventListener('click', (e) => { if (e.target.closest('[data-act=abandon]')) confirmAbandon(); });
 
   // ---------- tabs: codex / achievements / ledger / settings ----------
+  function journalHtml(id) {
+    const ents = D.JOURNAL[id];
+    if (!ents) return '';
+    const n = g.journalCount(id), t = g.S.lived[id] || 0;
+    let h = ents.slice(0, n).map((e) => `<p class="jr">${esc(e)}</p>`).join('');
+    if (n < ents.length) h += `<p class="jr next">Next journal entry after ${dur(D.JOURNAL_AT[n])} lived (${dur(t)} so far).</p>`;
+    return h;
+  }
   function ghostCard(d, found, fam) {
     if (found) {
       const L = D.LMAP[d.id];
-      return `<div class="card"><div class="art">${ghostSVG(d.id, d.color)}</div><h3>${esc(d.name)}</h3><span class="tag ${d.rarity}">${d.rarity}</span><p>${esc(d.quirk)}</p>${L ? `<p class="bonus">+${(D.LODGER_BONUS[d.rarity] * 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}% rent</p>` : `<p><i>${esc(d.bio)}</i></p>`}</div>`;
+      return `<div class="card"><div class="art">${ghostSVG(d.id, d.color)}</div><h3>${esc(d.name)}</h3><span class="tag ${d.rarity}">${d.rarity}</span><p>${esc(d.quirk)}</p>${L ? `<p class="bonus">+${(D.LODGER_BONUS[d.rarity] * 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}% rent</p>` : `<p><i>${esc(d.bio)}</i></p>${journalHtml(d.id)}`}</div>`;
     }
     let hint = d.id === 'mabel' ? 'Some tenants keep unusual hours.' : 'Move this tenant in to discover them.';
     let cls = '';
@@ -339,12 +403,13 @@
     const box = $('seanceCard');
     if (!box) return;
     const pool = g.seanceEligible(), cost = g.seanceCost();
-    const key = pool.length + '|' + cost + '|' + (g.S.rent >= cost);
+    const blocked = g.seanceBlocked();
+    const key = pool.length + '|' + cost + '|' + (g.S.rent >= cost) + '|' + blocked;
     if (box.dataset.k === key) return;
     box.dataset.k = key;
     const se = g.curSeason;
     box.innerHTML = `<h3>Hold a Seance</h3><p>Summon a random ghost into your Codex and the Guest Wing. ${pool.length ? `${pool.length} still out there.` : 'You have found everyone available right now.'}</p>${se ? `<p style="color:var(--gold)">${se.name} is on: seasonal ghosts are three times as likely.</p>` : ''}
-      <button class="btn" data-act="seance" style="margin-top:8px" ${!pool.length || g.S.rent < cost ? 'disabled' : ''}>${pool.length ? 'Summon - ' + fmt(cost) : 'Nobody left to summon'}</button>`;
+      <button class="btn" data-act="seance" style="margin-top:8px" ${!pool.length || blocked || g.S.rent < cost ? 'disabled' : ''}>${blocked ? 'Silent Seances: the dead are not taking calls' : pool.length ? 'Summon - ' + fmt(cost) : 'Nobody left to summon'}</button>`;
   }
   function buildAch() {
     const S = g.S, done = D.ACHIEVEMENTS.filter((a) => S.ach[a.id]).length;
@@ -441,7 +506,7 @@
       ['Rent per second', fmt(C.rps, 1)], ['Click power', fmt(C.clickPower, 1)], ['Rent this run', fmt(S.run)], ['Lifetime rent', fmt(S.total)],
       ['Hand collections', S.clicks], ['Tenants', g.totalGhosts()], ['Exorcisms', S.exorcisms], ['Spectral Essence earned', S.essenceTotal],
       ['Essence multiplier', 'x' + C.essMult.toFixed(2)], ['Achievement multiplier', 'x' + C.achMult.toFixed(2)], ['Room multiplier', 'x' + C.roomMult.toFixed(2)],
-      ['Offline earnings', Math.round(C.offlineRate * 100) + '% for up to ' + dur(C.offlineCap)], ['Incidents handled', S.stats.eventsDone],
+      ['Offline earnings', Math.round(C.offlineRate * 100) + '% for up to ' + dur(C.offlineCap)], ['Incidents handled', S.stats.eventsDone], ['Challenges done', Object.keys(S.challenge.done).length + '/' + D.CHALLENGES.length + ' (x' + C.chalDone.toFixed(2) + ' rent)'], ['Day/night', (g.phase || 'day') + (g.phase === 'night' ? ' (rent x' + D.NIGHT.rent + ')' : ' (click x' + D.NIGHT.click + ')')],
       ['Time played', dur(S.stats.timePlayed)],
     ];
     let h = rows.map((r) => `<div class="kv"><span>${r[0]}</span><b>${r[1]}</b></div>`).join('');
@@ -468,7 +533,7 @@
       <p class="note">Haunted Landlord, early test build. The "ghosts summoned worldwide" counter and the Community Haunting Meter are simulated for now; they will connect to real players once a server exists. Share link on the card is a placeholder.</p>`;
     if (DEV) {
       h += `<div class="sect">Test tools</div><div class="modes" style="flex-wrap:wrap">
-        ${[['+1K rent', 'r3'], ['+1M rent', 'r6'], ['+1B rent', 'r9'], ['+1T rent', 'r12'], ['Skip 1 hour away', 'ff'], ['Trigger incident', 'ev'], ['Ghost hunter', 'hunt'], ['Spawn Mabel', 'mab'], ['Unlock cellar', 'cel'], ['Cycle season', 'sea'], ['End race week', 'wk']]
+        ${[['+1K rent', 'r3'], ['+1M rent', 'r6'], ['+1B rent', 'r9'], ['+1T rent', 'r12'], ['Skip 1 hour away', 'ff'], ['Trigger incident', 'ev'], ['Ghost hunter', 'hunt'], ['Spawn Mabel', 'mab'], ['Unlock cellar', 'cel'], ['Cycle season', 'sea'], ['End race week', 'wk'], ['Toggle night/day', 'nd'], ['+10 Essence', 'es']]
           .map((x) => `<button class="chip" data-act="dev" data-d="${x[1]}">${x[0]}</button>`).join('')}</div>`;
     }
     $('tabBody').innerHTML = h;
@@ -515,6 +580,9 @@
       case 'buy': g.buyGhost(id, buyMode === 'max' ? 'max' : buyMode); break;
       case 'upg': g.buyUpgrade(id); break;
       case 'ess': g.buyEssence(id); break;
+      case 'tree': g.buyTree(id); break;
+      case 'chal': confirmChallenge(id); break;
+      case 'abandon': confirmAbandon(); break;
       case 'exorcise': confirmExorcism(); break;
       case 'sound': g.S.settings.sound = !g.S.settings.sound; applySettings(); buildSettings(); break;
       case 'calm': g.S.settings.calm = !g.S.settings.calm; applySettings(); buildSettings(); break;
@@ -558,7 +626,7 @@
   function devAction(d) {
     if (d[0] === 'r') { g.gain(Math.pow(10, +d.slice(1))); }
     else if (d === 'ff') { g.S.lastSeen -= 3600e3; const r = g.applyOffline(Date.now()); if (r) showWelcome(r); }
-    else if (d === 'ev') g.forceEvent(pick(window.HLEngine.EVENTS.filter((x) => x.need(g.S, g) && !x.tap)).id, Date.now());
+    else if (d === 'ev') g.forceEvent(pick(window.HLEngine.EVENTS.filter((x) => x.need(g.S, g) && !x.hunt)).id, Date.now());
     else if (d === 'hunt') g.forceEvent('hunter', Date.now());
     else if (d === 'mab') spawnMabel();
     else if (d === 'cel') g.unlockCellar();
@@ -568,6 +636,8 @@
       g.checkSeason(Date.now());
       toast('Season preview: ' + (g.curSeason ? g.curSeason.name : 'none (real date)'));
     }
+    else if (d === 'nd') { g.phaseOverride = g.phase === 'night' ? 'day' : 'night'; g.checkPhase(Date.now()); toast('Forced ' + g.phase + '. URL params ?night=1 / ?day=1 do the same on load.'); }
+    else if (d === 'es') { g.S.essence += 10; g.S.essenceTotal += 10; g.recalc(Date.now()); dirty.tab = true; }
     else if (d === 'wk') { g.S.week.cycle -= 1; g.weekCheck(Date.now()); }
   }
 
@@ -627,16 +697,37 @@
     if (!ev) { bar.hidden = true; return; }
     const d = ev.def;
     bar.hidden = false;
-    bar.innerHTML = `<h3>${esc(ev.title)}</h3><p>${esc(ev.text)}</p><div class="row">${d.tap
-      ? `<button class="btn alt" data-ev="tap">DEFEND! (<span id="tapCount">0</span>/${d.tap.need})</button>`
-      : ev.labels.map((l, i) => `<button class="btn" data-ev="${i}">${esc(l)}</button>`).join('')}</div><div class="timer"><i id="evTimer" style="width:100%"></i></div>`;
+    bar.innerHTML = `<h3>${esc(ev.title)}</h3><p>${esc(ev.text)}</p>${ev.hunt
+      ? `<div class="hunt-area" id="huntArea"></div><div class="hunt-score">Hidden: <b id="huntScore">0</b> / ${ev.hunt.n}${ev.hunt.calm ? ' (calm mode: slower ghosts)' : ''}</div>`
+      : `<div class="row">${ev.labels.map((l, i) => `<button class="btn" data-ev="${i}">${esc(l)}</button>`).join('')}</div>`}<div class="timer"><i id="evTimer" style="width:100%"></i></div>`;
   }
   $('eventBar').addEventListener('click', (e) => {
+    const hg = e.target.closest('[data-hid]');
+    if (hg) { Snd.init(); if (g.huntTap(+hg.dataset.hid)) { hg.remove(); Snd.coin(); const c = $('huntScore'); if (c && g.ev && g.ev.hunt) c.textContent = g.ev.hunt.hidden; } return; }
     const b = e.target.closest('[data-ev]');
     if (!b) return;
     Snd.init();
-    if (b.dataset.ev === 'tap') { g.tapHunter(); Snd.coin(); const c = $('tapCount'); if (c && g.ev) c.textContent = g.ev.taps; } else g.chooseEvent(+b.dataset.ev);
+    g.chooseEvent(+b.dataset.ev);
   });
+
+  // Keeps the hunter play area in step with the engine's ghost list (add new, drop gone).
+  function syncHunt() {
+    const h = g.ev && g.ev.hunt, area = $('huntArea');
+    if (!h || !area) return;
+    const have = new Set();
+    area.querySelectorAll('[data-hid]').forEach((el) => { if (h.ghosts.some((x) => String(x.id) === el.dataset.hid)) have.add(el.dataset.hid); else el.remove(); });
+    for (const gh of h.ghosts) {
+      if (have.has(String(gh.id))) continue;
+      const b = document.createElement('button');
+      b.className = 'hg' + (h.calm ? ' calm' : '');
+      b.dataset.hid = gh.id;
+      b.style.left = gh.x + '%'; b.style.top = gh.y + '%';
+      b.setAttribute('aria-label', 'Hide this ghost');
+      b.innerHTML = ghostSVG('gary', '#e8fff9');
+      area.appendChild(b);
+    }
+    const c = $('huntScore'); if (c) c.textContent = h.hidden;
+  }
 
   // ---------- secrets ----------
   function spawnMabel() {
@@ -674,6 +765,12 @@
       case 'house': renderScene(); applyDoor(); if (tab === 'house') dirty.tab = true; break;
       case 'week': notify('Weekly Rent Race finished', `You placed #${data.rank}. Claim your prize!`, 'week'); if (tab === 'neighbors') dirty.tab = true; break;
       case 'eventEnd': renderEvent(); break;
+      case 'phase': applyPhase(); break;
+      case 'challenge':
+        chalBarRender(); dirty.rooms = dirty.tab = true;
+        if (data.state === 'start') { toast('Challenge started: ' + D.CHMAP[data.id].name + '. Reach the goal to win.', 'ach'); Snd.big(); }
+        else if (data.state === 'done') { Snd.big(); shake(); }
+        break;
       case 'ach': Snd.ach(); toast('Achievement: ' + data.name, 'ach'); if (tab === 'ach') dirty.tab = true; break;
       case 'cellar': toast('You sat still long enough that a hidden door creaked open. The Forgotten Cellar is yours!', 'ach'); Snd.ghost(); dirty.rooms = true; break;
       case 'mabel': toast('Midnight Mabel moves in for free. "Don\'t ask how I got a key."', 'ach'); Snd.big(); dirty.rooms = dirty.tab = true; break;
@@ -743,6 +840,14 @@
   }
   function refreshAll() { renderScene(); applyDoor(); renderSeason(); coachStep = -1; }
 
+  // ---------- day / night ----------
+  function applyPhase() {
+    const n = g.phase === 'night';
+    document.body.classList.toggle('night', n);
+    document.body.classList.toggle('day', !n);
+    $('phase').textContent = n ? 'Night: rent +' + Math.round((D.NIGHT.rent - 1) * 100) + '%' : 'Day: clicks +' + Math.round((D.NIGHT.click - 1) * 100) + '%';
+  }
+
   // ---------- header / footer ----------
   function applySettings() {
     Snd.on = g.S.settings.sound; Snd.calm = g.S.settings.calm;
@@ -768,6 +873,7 @@
     const p = g.pending();
     btnEx.hidden = p < 1;
     btnEx.textContent = `Exorcism ready: +${p} Essence`;
+    chalBarRender();
     // daily
     $('btnDaily').hidden = !g.dailyState(now).ready || !S.stats.firstClick;
     // footer
@@ -777,8 +883,9 @@
     // tab-specific live updates
     if (tab === 'ledger') buildLedger();
     if (tab === 'exorcism' && !modalOpen()) {
-      const k = p + '|' + S.essence + '|' + Math.floor(S.run / 1e3);
+      const k = p + '|' + S.essence + '|' + Object.keys(S.tree).length + '|' + Object.keys(S.challenge.done).length + '|' + S.challenge.active;
       if (k !== exKey) { exKey = k; buildExorcism(); }
+      const er = $('exRun'); if (er) er.textContent = fmt(S.run);
     }
     if (tab === 'upgrades') {
       const key = visibleUpgrades().map((u) => u.id).join();
@@ -796,7 +903,7 @@
   $('comm').addEventListener('click', (e) => { if (e.target.closest('[data-comm]') && g.claimCommunity(Date.now())) { Snd.big(); toast('Halloween Hank moves in for an hour.', 'ach'); } });
 
   // ---------- main loop ----------
-  let last = Date.now(), slowAcc = 0, saveAcc = 0, fastAcc = 0;
+  let crossAcc = 0, last = Date.now(), slowAcc = 0, saveAcc = 0, fastAcc = 0;
   ['pointerdown', 'keydown', 'mousemove', 'touchstart'].forEach((ev) => window.addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true }));
 
   function frame() {
@@ -815,7 +922,8 @@
 
     if (g.ev) {
       const t = $('evTimer');
-      if (t) t.style.width = Math.max(0, (g.ev.until - now) / ((g.ev.def.tap ? g.ev.def.tap.secs : 45) * 1000) * 100) + '%';
+      if (t) t.style.width = Math.max(0, (g.ev.until - now) / (g.ev.hunt ? g.ev.until - g.ev.hunt.t0 : 45000) * 100) + '%';
+      if (g.ev.hunt) syncHunt();
     }
 
     fastAcc += dt;
@@ -830,6 +938,8 @@
     slowAcc += dt;
     if (slowAcc >= 1) {
       slowAcc = 0;
+      g.checkPhase(now);
+      if (++crossAcc >= 60) { crossAcc = 0; g.crossDaily(now); }
       renderSlow(now);
       if (!g.S.cellar && now - lastInput >= 5 * 60000) g.unlockCellar();
       if (!mabelEl && !g.S.mabel && new Date().getHours() === 0 && now > mabelNext) spawnMabel();
@@ -843,6 +953,9 @@
 
   // ---------- boot ----------
   if (qs.get('season')) g.seasonOverride = qs.get('season');
+  if (qs.get('night') === '1') g.phaseOverride = 'night'; else if (qs.get('day') === '1') g.phaseOverride = 'day';
+  g.checkPhase(Date.now());
+  applyPhase();
   g.checkSeason(Date.now());
   g.weekCheck(Date.now());
   applySettings();
@@ -857,6 +970,7 @@
   if (hadSave) {
     const r = g.applyOffline(Date.now());
     if (r) showWelcome(r);
+    g.crossDaily(Date.now());
   } else {
     toast('Welcome, landlord. Ring the bell to collect your first rent.');
   }

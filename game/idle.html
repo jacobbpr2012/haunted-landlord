@@ -8,6 +8,9 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#170f2b">
+<link rel="apple-touch-icon" href="icon-192.png">
 </head>
 <body>
 <div id="app">
@@ -23,6 +26,7 @@
     <div class="tools">
       <a class="chip" href="index.html">Home</a>
       <button id="btnDaily" class="chip" hidden>Daily Haunting</button>
+      <span id="phase" class="chip phase" title="Local clock: night is 19:00 to 06:00"></span>
       <button id="btnMute" class="chip" aria-label="Toggle sound">Sound: on</button>
     </div>
   </header>
@@ -30,6 +34,7 @@
 
   <div id="buffs" class="buffs"></div>
   <div id="seasonBar" class="season-bar" hidden></div>
+  <div id="chalBar" class="chal-bar" hidden></div>
   <div id="eventBar" class="event-bar" hidden></div>
   <div id="coach" class="coach" hidden></div>
 
@@ -63,5 +68,6 @@
 <script src="audio.js"></script>
 <script src="share.js"></script>
 <script src="ui.js"></script>
+<script src="pwa.js"></script>
 </body>
 </html>

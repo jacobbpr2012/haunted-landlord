@@ -35,3 +35,37 @@
 .tbl td, .tbl th { padding: 4px 2px; text-align: right; border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent); }
 .tbl th { color: var(--dim); font-weight: 400; } .tbl td:first-child, .tbl th:first-child { text-align: left; }
 .banner { background: var(--card2); border: 1px solid var(--gold); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 14px; }
+
+/* round 4: reviews, VIP and crisis cards, themes, seasons, challenges */
+.rev { border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent); padding: 6px 2px; font-size: 13px; }
+.rev .stars { letter-spacing: 1px; color: var(--gold); }
+.rev .stars.bad { color: var(--warn); }
+.rev .who { color: var(--dim); font-size: 12px; }
+.rev .txt { margin-top: 2px; font-style: italic; line-height: 1.4; }
+.ratebig { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.ratebig b { font-size: 36px; color: var(--gold); }
+.ratebig .stars { color: var(--gold); letter-spacing: 2px; font-size: 18px; }
+.ratebig small { color: var(--dim); }
+.hrow { display: grid; grid-template-columns: 38px 1fr 28px; gap: 8px; align-items: center; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+.hrow .bar { height: 8px; }
+.hrow span:last-child { text-align: right; }
+.scard.vip { border-color: var(--teal); }
+.scard.vip h3 { color: var(--teal); }
+.scard.crisis, .banner.crisis { border-color: var(--warn); }
+.scard.crisis h3 { color: var(--warn); }
+.banner.season { border-color: var(--pink); }
+.banner.good { border-color: var(--teal); }
+.mods { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.mods .chip { font-size: 12px; padding: 4px 10px; }
+.mods .chip.bad { border-color: var(--warn); color: var(--warn); }
+.thm { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.thm small { color: var(--dim); }
+.thm select { flex: 1; min-width: 0; padding: 4px 6px; border-radius: var(--r); border: 1px solid var(--line); background: var(--deep); color: var(--text); font: inherit; font-size: 12px; }
+.thmnote { margin-top: 4px; font-size: 11px; color: var(--teal); }
+.sroom.themed { border-color: var(--teal); }
+.codebox { display: flex; gap: 8px; margin-bottom: 8px; }
+.codebox input { flex: 1; min-width: 0; padding: 8px; border-radius: var(--r); border: 1px solid var(--line); background: var(--deep); color: var(--text); font: inherit; }
+code { font-family: ui-monospace, Consolas, monospace; background: var(--deep); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+body.challenge .sect-h::after { content: " (challenge run)"; color: var(--pink); }
+.stars .off { font-style: normal; opacity: .25; }
+.stars .off { font-style: normal; opacity: .25; }

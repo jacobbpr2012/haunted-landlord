@@ -4,16 +4,18 @@
   const D = root.SimData || require('./data.js');
   const K = D.CONST;
 
-  const rand = (a, b) => a + Math.random() * (b - a);
+  // RNG is swapped per Sim instance (see the prototype wrapper at the bottom): Math.random for the main hotel, a seeded stream for challenges.
+  let RNG = Math.random;
+  const rand = (a, b) => a + RNG() * (b - a);
   const ri = (a, b) => Math.floor(rand(a, b + 1));
-  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const pick = (a) => a[Math.floor(RNG() * a.length)];
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  function newState() {
+  function newState(ch) {
     const rooms = {};
-    D.ROOMS.forEach((r) => { rooms[r.id] = { owned: !!r.start, cond: 100, lvl: 0, guest: null }; });
+    D.ROOMS.forEach((r) => { rooms[r.id] = { owned: !!r.start && !(ch && ch.rules && ch.rules.oneRoom && r.id !== 'r1'), cond: 100, lvl: 0, guest: null, theme: null }; });
     return {
-      v: 1, hotelName: pick(D.HOTEL_NAMES), day: 1, phase: 'plan', cash: K.START_CASH, debt: 0,
+      v: 1, hotelName: D.HOTEL_NAMES[0], day: 1, phase: 'plan', cash: ch && ch.startCash !== undefined ? ch.startCash : K.START_CASH, debt: ch && ch.startDebt || 0,
       comfort: 20, spook: 10, rate: 1, stage: 1, rooms,
       arrivals: [], cards: [], cardIdx: 0, log: [], last: null, ledger: [],
       upgrades: {}, staff: {}, perks: {}, stories: {}, nextId: 1,
@@ -22,22 +24,64 @@
       props: {}, group: { revenue: 0, expenses: 0 },
       brand: 0, campaign: null, acq: [], offers: [], offerDay: 0,
       morale: {}, traits: {}, raises: {}, partyDay: 0, landmarks: {}, legacy: 0, runs: 0, world: 0,
-      tutorial: { step: 0, done: false, g0: 0, d0: 1 },
+      tutorial: { step: 0, done: !!ch, g0: 0, d0: 1 },
+      // round 4: reviews, mods (timed income buffs and debuffs), VIPs, disasters, challenge run
+      reviews: [], stars: [], mods: [], vipDay: 0, disaster: null, disasterEnd: 0,
+      chal: ch ? { id: ch.id, days: ch.days, done: false, score: 0, ok: false } : null, rs: ch ? ch.seed >>> 0 : undefined,
     };
   }
 
   class Sim {
-    constructor(storage) {
+    // opts: { challenge: id, key: save key, fresh: true } runs a seeded challenge in its own save slot.
+    constructor(storage, opts) {
+      opts = opts || {};
       this.storage = storage || null;
       this.onEmit = () => {};
-      if (!this.load()) this.reset();
+      this.key = opts.key || K.SAVE_KEY;
+      this.chalDef = opts.challenge ? D.CHMAP[opts.challenge] : null;
+      this.seasonOverride = null;   // 'none' disables seasons, a season id forces one
+      this.notice = null;           // one-shot message for the UI (daily bonus)
+      this.rngFn = () => {
+        const S = this.S;
+        if (!S || !S.chal || S.rs === undefined) return Math.random();
+        S.rs = (S.rs + 0x6D2B79F5) >>> 0;   // mulberry32, state kept in the save so a resumed run stays on the same stream
+        let t = S.rs;
+        t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      if (opts.fresh || !this.load()) this.reset();
       this.syncShared();
+      if (!this.isChal()) { this.crossDay(); this.publish(); }
     }
+    isChal() { return !!(this.S && this.S.chal); }
+
+    // Cross-mode hooks (shared.js may not have them yet): daily touch bonus and published stats.
+    crossDay() {
+      const H = root.HLShared;
+      if (!H || typeof H.touchDay !== 'function' || !this.storage) return;
+      let r = null;
+      try { r = H.touchDay(Date.now(), this.storage); } catch (e) { return; }
+      if (!r || !r.isNew) return;
+      const L = this.S.ledger.slice(-5), avg = L.length ? L.reduce((a, l) => a + l.revenue, 0) / L.length : 0;
+      const bonus = Math.round(Math.max(60, avg * 0.5) + this.S.stage * 40);
+      this.S.cash += bonus;
+      this.notice = 'Daily visit' + (r.streak ? ', streak ' + r.streak : '') + ': the ghosts left $' + bonus + ' in the till for turning up.';
+      this.save();
+    }
+    storiesSolved() { return D.STORIES.filter((s) => !s.season && this.S.stories[s.id] && this.S.stories[s.id].done && this.S.stories[s.id].good >= s.steps.length - 1).length; }
+    publish() {
+      const H = root.HLShared;
+      if (!H || typeof H.write !== 'function' || this.isChal() || !this.storage) return;
+      try {
+        H.write({ sim: { day: this.S.day, stage: this.S.stage, stories: this.storiesSolved(), rating: this.ratingAvg(), challenges: Sim.completed(this.storage), income: this.S.stats.revenue + this.S.group.revenue } }, this.storage);
+      } catch (e) { /* shared bridge not ready */ }
+    }
+    takeNotice() { const n = this.notice; this.notice = null; return n; }
 
     // Idle's discovered-ghost count lives in the shared Codex key; Simulator guests are written back to it.
     syncShared() {
       const H = root.HLShared;
-      this.idleCount = H ? H.read(this.storage).idle.count : 0;
+      this.idleCount = H && !this.isChal() ? H.read(this.storage).idle.count : 0;
     }
     // Called when the other mode changes the shared key (storage event from the other tab). Returns true if anything changed.
     refreshShared() {
@@ -47,22 +91,26 @@
     }
     shareGuest(id) {
       const H = root.HLShared;
-      if (H) H.write({ guests: { [id]: 1 } }, this.storage);
+      if (H && !this.isChal()) H.write({ guests: { [id]: 1 } }, this.storage);
     }
 
-    reset() { this.S = newState(); this.genArrivals(); this.save(); }
+    reset() { this.S = newState(this.chalDef); this.S.hotelName = pick(D.HOTEL_NAMES); this.genArrivals(); this.save(); }
 
-    save() { try { if (this.storage) this.storage.setItem(K.SAVE_KEY, JSON.stringify(this.S)); } catch (e) { /* blocked */ } }
+    save() {
+      try { if (this.storage) this.storage.setItem(this.key, JSON.stringify(this.S)); } catch (e) { /* blocked */ }
+      this.publish();
+    }
 
     load() {
       try {
-        const raw = this.storage && this.storage.getItem(K.SAVE_KEY);
+        const raw = this.storage && this.storage.getItem(this.key);
         if (!raw) return false;
         const s = JSON.parse(raw);
         if (!s || s.v !== 1) return false;
-        const base = newState();
+        if (this.chalDef ? !s.chal || s.chal.id !== this.chalDef.id : !!s.chal) return false;
+        const base = newState(this.chalDef);
         this.S = Object.assign(base, s);
-        D.ROOMS.forEach((r) => { if (!this.S.rooms[r.id]) this.S.rooms[r.id] = base.rooms[r.id]; });
+        D.ROOMS.forEach((r) => { if (!this.S.rooms[r.id]) this.S.rooms[r.id] = base.rooms[r.id]; if (this.S.rooms[r.id].theme === undefined) this.S.rooms[r.id].theme = null; });
         Object.keys(this.S.staff).forEach((id) => { if (!(id in this.S.morale) && id !== 'regional') this.initStaff(id); });
         Object.keys(this.S.props).forEach((id) => this.prop(id));
         // Saves from before the tutorial existed: skip it for anyone who already played.
@@ -76,9 +124,9 @@
     freeRooms() { return this.ownedRooms().filter((r) => !this.S.rooms[r.id].guest); }
     occupied() { return this.ownedRooms().filter((r) => this.S.rooms[r.id].guest); }
     costCut() { return this.S.landmarks.tower ? 0.85 : 1; }
-    staffName(id) { return id === 'gm' ? 'General Manager' : (D.STAFF.find((s) => s.id === id) || { name: id }).name; }
+    staffName(id) { return id === 'gm' ? 'General Manager' : (D.STAFFMAP[id] || { name: id }).name; }
     wageOf(id) {
-      const base = id === 'gm' ? D.GM.wage[this.S.gmLvl - 1] : D.STAFF.find((s) => s.id === id).wage;
+      const base = id === 'gm' ? D.GM.wage[this.S.gmLvl - 1] : D.STAFFMAP[id].wage;
       return Math.round(base * (1 + D.MORALE.raiseStep * (this.S.raises[id] || 0)) * (this.S.traits[id] === 'frugal' ? 0.9 : 1));
     }
     wages() { return Math.round(Object.keys(this.S.staff).filter((id) => id !== 'regional').reduce((n, id) => n + this.wageOf(id), 0) * this.costCut()); }
@@ -89,13 +137,13 @@
       const f = m >= D.MORALE.high ? 1.15 : m >= D.MORALE.low ? 1 : 0.7;
       return this.S.traits[id] === 'driven' ? f * 1.1 : f;
     }
-    initStaff(id) { this.S.morale[id] = D.MORALE.start; this.S.traits[id] = pick(D.TRAITS).id; }
+    initStaff(id) { const d = D.STAFFMAP[id]; this.S.morale[id] = (d && d.startMorale) || D.MORALE.start; this.S.traits[id] = pick(D.TRAITS).id; }
     dropStaff(id) { delete this.S.staff[id]; delete this.S.morale[id]; delete this.S.traits[id]; delete this.S.raises[id]; }
     party() {
       const S = this.S, n = this.partyHeads(), cost = D.MORALE.partyCost * n;
       if (S.phase !== 'plan' || !n || S.partyDay === S.day || S.cash < cost) return false;
       S.cash -= cost; S.partyDay = S.day;
-      Object.keys(S.morale).forEach((id) => { S.morale[id] = clamp(S.morale[id] + D.MORALE.partyGain, 0, 100); });
+      Object.keys(S.morale).forEach((id) => { S.morale[id] = clamp(S.morale[id] + D.MORALE.partyGain * ((D.STAFFMAP[id] && D.STAFFMAP[id].partyMult) || 1), 0, 100); });
       this.gmProps().forEach((d) => { const p = this.prop(d.id); p.morale = clamp(p.morale + D.MORALE.partyGain, 0, 100); });
       this.save(); return true;
     }
@@ -126,7 +174,7 @@
       Object.keys(S.staff).forEach((id) => {
         if (!(id in S.morale)) return;
         const t = S.traits[id];
-        S.morale[id] = clamp(S.morale[id] - M.decay * (t === 'cheerful' ? 0.75 : t === 'driven' ? 1.25 : 1), 0, 100);
+        S.morale[id] = clamp(S.morale[id] - M.decay * (t === 'cheerful' ? 0.75 : t === 'driven' ? 1.25 : 1) * ((D.STAFFMAP[id] && D.STAFFMAP[id].decay) || 1), 0, 100);
         if (S.morale[id] <= M.quit) {
           const nm = this.staffName(id);
           rec.quit.push(nm); S.log.push(nm + ' quit. Morale hit rock bottom.');
@@ -157,8 +205,69 @@
       if (this.S.upgrades.minibar) v *= 1.1;
       if (this.S.upgrades.lounge) v *= K.LOUNGE_MULT;
       if (this.S.staff.chef) v *= 1 + (K.CHEF_MULT - 1) * this.mor('chef');
+      const th = this.S.rooms[roomId].theme, gt = D.GMAP[g.type];
+      if (th && D.TMAP[th].likes.indexOf(g.type) >= 0) v *= D.TMAP[th].mult;
+      if (this.S.staff.spectral && (gt.want === 'spooky' || gt.want === 'cheap')) v *= 1 + 0.1 * this.mor('spectral');
+      v *= this.ratingMult();
       v *= this.incomeMult();
       return Math.round(v);
+    }
+
+    // ---- round 4 helpers: ratings, mods, seasons, themes ----
+    ratingAvg() { const a = this.S.stars; return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+    ratingMult() { return this.S.stars.length >= K.RATING_MIN ? 1 + (this.ratingAvg() - 3.5) * 0.02 : 1; }
+    modMult() { return this.S.mods.reduce((m, x) => m * x.mult, 1); }
+    addMod(name, mult, days) {
+      const S = this.S, i = S.mods.findIndex((m) => m.name === name);
+      if (i >= 0) S.mods.splice(i, 1);
+      S.mods.push({ name, mult, left: days });
+    }
+    modsTick() {
+      const S = this.S;
+      S.mods.forEach((m) => { m.left--; });
+      S.mods.filter((m) => m.left <= 0).forEach((m) => S.log.push(m.name + (m.mult >= 1 ? ' bonus has worn off.' : ' has blown over.')));
+      S.mods = S.mods.filter((m) => m.left > 0);
+    }
+    season() {
+      if (this.isChal() || this.seasonOverride === 'none') return null;
+      return D.seasonAt(Date.now(), this.seasonOverride);
+    }
+    seasonOpen(g) { if (!g.season) return true; const c = this.season(); return !!c && c.id === g.season; }
+    themeCost(roomId) { return Math.round(D.RMAP[roomId].base * K.THEME_COST); }
+    dressRoom(roomId, themeId) {
+      const S = this.S, r = S.rooms[roomId];
+      if (S.phase !== 'plan' || !r || !r.owned) return false;
+      if (!themeId) { if (!r.theme) return false; r.theme = null; this.save(); return true; }
+      const t = D.TMAP[themeId], c = this.themeCost(roomId);
+      if (!t || r.theme === themeId || S.cash < c) return false;
+      S.cash -= c; r.theme = themeId; this.save(); return true;
+    }
+    // A themed room that the guest type likes.
+    themed(roomId, typeId) { const th = this.S.rooms[roomId].theme; return !!th && D.TMAP[th].likes.indexOf(typeId) >= 0; }
+
+    // ---- reviews ----
+    addReview(stars, who, text, room) {
+      const S = this.S;
+      const rv = { day: S.day, stars, who, room: room || '', text };
+      S.reviews.unshift(rv); if (S.reviews.length > K.REVIEW_KEEP) S.reviews.length = K.REVIEW_KEEP;
+      S.stars.push(stars); if (S.stars.length > K.RATING_WINDOW) S.stars.shift();
+      return rv;
+    }
+    makeReview(g, gt, roomId) {
+      const S = this.S, rm = D.RMAP[roomId], sat = g.sat;
+      let stars = sat >= 85 ? 5 : sat >= 70 ? 4 : sat >= 55 ? 3 : sat >= 35 ? 2 : 1;
+      if (S.staff.banshee && stars < 5 && RNG() < 0.25 * this.mor('banshee')) stars++;
+      let text = pick(D.REVIEWS[stars]).replace('{room}', rm.name);
+      const ex = [];
+      if (S.rooms[roomId].cond < 40 && stars <= 3 && RNG() < 0.5) ex.push(D.REVIEW_ROOM);
+      else if (g.cx && stars !== 3 && (stars >= 4 || (g.cs || 0) < 10) && RNG() < 0.5) ex.push(pick(stars >= 4 ? D.REVIEW_CX.good : D.REVIEW_CX.bad));
+      else if (D.REVIEW_WANT[gt.want] && (stars >= 4 || stars <= 2) && RNG() < 0.4) ex.push(pick(D.REVIEW_WANT[gt.want][stars >= 4 ? 'hi' : 'lo']));
+      const th = S.rooms[roomId].theme;
+      if (th && stars >= 4 && this.themed(roomId, g.type) && RNG() < 0.35) ex.push('Loved the ' + D.TMAP[th].name + ' decor.');
+      const sea = this.season();
+      if (sea && stars >= 3 && RNG() < 0.25) ex.push(sea.review);
+      if (ex.length) text += ' ' + ex.join(' ');
+      return this.addReview(stars, gt.name, text, rm.name);
     }
 
     // ---- planning phase ----
@@ -166,6 +275,8 @@
       const S = this.S;
       let n = 2 + Math.floor((S.comfort + S.spook) / 40) + (S.upgrades.lobby ? 1 : 0) + (S.perks.harlow ? 1 : 0) + ri(0, 2);
       if (S.rate < 1) n += 1; else if (S.rate > 1) n -= 1;
+      if (S.stars.length >= K.RATING_MIN) { const R = this.ratingAvg(); if (R >= 4.3) n += 1; else if (R < 2.8) n -= 1; }
+      if (S.disaster) n -= D.DMAP[S.disaster.id].tick.arr || 0;
       n = clamp(n + Math.floor(this.ownedRooms().length / 3), 1, K.MAX_ARRIVALS);
       S.arrivals = [];
       for (let i = 0; i < n; i++) this.pushArrival();
@@ -180,9 +291,9 @@
 
     pushArrival() {
       const S = this.S;
-      const pool = D.GUESTS.filter((g) => this.homeOpen(g) && (!g.gate || ((g.gate.comfort || 0) <= S.comfort && (g.gate.spook || 0) <= S.spook)));
+      const pool = D.GUESTS.filter((g) => this.homeOpen(g) && this.seasonOpen(g) && (!g.gate || ((g.gate.comfort || 0) <= S.comfort && (g.gate.spook || 0) <= S.spook)));
       const total = pool.reduce((a, g) => a + g.weight, 0);
-      let r = Math.random() * total, t = pool[0];
+      let r = RNG() * total, t = pool[0];
       for (const g of pool) { r -= g.weight; if (r <= 0) { t = g; break; } }
       S.arrivals.push({ id: S.nextId++, type: t.id, nights: ri(t.nights[0], t.nights[1]) });
     }
@@ -211,10 +322,12 @@
       if (i < 0 || !room || !room.owned || room.guest) return { ok: false, msg: 'That room is not available.' };
       const a = S.arrivals[i];
       if (this.refuses(a.type)) return { ok: false, msg: D.GMAP[a.type].name + ' will not pay premium rates.' };
-      const m = this.match(a.type, roomId);
+      const m = this.match(a.type, roomId), gt = D.GMAP[a.type];
       let sat = 35 + m * 40 + (room.cond / 100) * 15 + (S.upgrades.lounge ? 4 : 0) + (S.staff.chef ? 6 : 0);
+      if (this.themed(roomId, a.type)) sat += 5;
+      if (S.staff.poltergeist && gt.want === 'spooky') sat += 8 * this.mor('poltergeist');
       if (S.rate < 1) sat += 8; else if (S.rate > 1) sat += m >= 0.8 ? 2 : -12;
-      room.guest = { id: a.id, type: a.type, left: a.nights, nights: a.nights, sat: Math.round(clamp(sat, 5, 100)) };
+      room.guest = { id: a.id, type: a.type, left: a.nights, nights: a.nights, sat: Math.round(clamp(sat, 5, 100)), cx: 0, cs: 0 };
       S.arrivals.splice(i, 1);
       S.stats.guests++;
       return { ok: true };
@@ -250,6 +363,7 @@
     buyRoom(id) {
       const def = D.RMAP[id], r = this.S.rooms[id];
       if (this.S.phase !== 'plan' || !def || !def.cost || r.owned || this.S.cash < def.cost) return false;
+      if (this.S.chal && this.chalDef.rules && this.chalDef.rules.oneRoom) return false;
       this.S.cash -= def.cost; r.owned = true; r.cond = 100; this.save(); return true;
     }
     buyUpgrade(id) {
@@ -258,7 +372,8 @@
       this.S.cash -= u.cost; this.S.upgrades[id] = true; this.save(); return true;
     }
     hire(id) {
-      const def = D.STAFF.find((s) => s.id === id);
+      const def = D.STAFFMAP[id];
+      if (this.S.chal && this.chalDef.rules && this.chalDef.rules.noStaff) return false;
       if (id === 'gm') { if (this.S.stage < 3 || !this.S.staff.desk || this.S.staff.gm) return false; }
       else if (!def || this.S.stage < def.stage || this.S.staff[id]) return false;
       this.S.staff[id] = true; this.initStaff(id); this.save(); return true;
@@ -307,7 +422,7 @@
     incomeMult() {
       const S = this.S, H = root.HLShared;
       return (1 + D.BRAND.income * S.brand) * (S.campaign ? S.campaign.mult : 1) * (1 + (H ? H.idleIncomeBonus(this.idleCount) : 0)) *
-        (1 + K.LEGACY_INCOME * S.legacy) * (S.landmarks.palace ? 1.1 : 1) * (S.perks.lastguest ? 1.03 : 1) * (1 + D.WORLD.income * S.world) * (S.perks.founder ? 1.08 : 1);
+        (1 + K.LEGACY_INCOME * S.legacy) * (S.landmarks.palace ? 1.1 : 1) * (S.perks.lastguest ? 1.03 : 1) * (1 + D.WORLD.income * S.world) * (S.perks.founder ? 1.08 : 1) * this.modMult() * (this.season() ? this.season().mult : 1);
     }
     legacyPoints() { return Math.floor(Math.sqrt((this.S.stats.revenue + this.S.group.revenue) / K.LEGACY_DIV)); }
     buyLandmark(id) {
@@ -389,7 +504,7 @@
     }
     hireRegional() {
       const S = this.S;
-      if (S.stage < 4 || S.staff.regional || !this.ownedProps().length) return false;
+      if (S.stage < 4 || S.staff.regional || !this.ownedProps().length || this.isChal()) return false;
       S.staff.regional = true; this.save(); return true;
     }
     fireRegional() { if (!this.S.staff.regional) return false; delete this.S.staff.regional; this.save(); return true; }
@@ -450,11 +565,15 @@
       this.occupied().forEach((r) => {
         const g = S.rooms[r.id].guest;
         const p = clamp(0.15 + (60 - g.sat) / 100 + (50 - S.rooms[r.id].cond) / 200, 0.05, 0.8) * (S.upgrades.soundproof ? 0.75 : 1);
-        if (Math.random() < p && cards.length < K.MAX_CARDS) {
+        if (RNG() < p * (S.staff.watchman ? 0.8 : 1) && cards.length < K.MAX_CARDS) {
           const def = pick(D.COMPLAINTS.filter((x) => !used[x.id])); used[def.id] = 1;
           cards.push({ kind: 'complaint', def: def.id, room: r.id });
         }
       });
+      if (S.staff.poltergeist && this.occupied().length && cards.length < K.MAX_CARDS && RNG() < 0.15 / this.mor('poltergeist')) {
+        const rr = pick(this.occupied());
+        cards.push({ kind: 'complaint', def: pick(D.COMPLAINTS.filter((x) => !used[x.id])).id, room: rr.id });
+      }
       const story = D.STORIES.find((s) => this.storyOpen(s) && !(S.stories[s.id] && S.stories[s.id].done));
       // staff take complaints first, up to their capacity
       const gm = this.gmActive();
@@ -464,16 +583,23 @@
       cards.forEach((c) => {
         if (cap > 0) { cap--; this.applyComplaint(c, 1, true, satMult); } else todo.push(c);
       });
-      if (S.day >= 2 && Math.random() < K.EVENT_CHANCE) {
+      if (S.day >= 2 && RNG() < K.EVENT_CHANCE) {
         const ec = { kind: 'event', event: pick(D.EVENTS).id };
         if (gm) this.applyEvent(ec, 1, true); else todo.push(ec);
       }
       this.ownedProps().forEach((def) => {
         const p = this.prop(def.id);
-        if (!p.gm || Math.random() >= def.trouble * (S.perks.ravenscroft && def.id === 'manor' ? 0.5 : 1) / (p.gmLvl * this.bmor(p))) return;
+        if (!p.gm || RNG() >= def.trouble * (S.perks.ravenscroft && def.id === 'manor' ? 0.5 : 1) / (p.gmLvl * this.bmor(p))) return;
         const bc = { kind: 'branch', prop: def.id, event: pick(D.BRANCH_EVENTS).id };
         if (S.staff.regional) this.applyBranchEvent(bc, 1, true); else todo.push(bc);
       });
+      this.rollDisaster();
+      if (S.disaster) {
+        const dc = { kind: 'disaster', id: S.disaster.id, step: S.disaster.day };
+        if (gm && D.DMAP[S.disaster.id].gmOk) this.applyDisaster(dc, 1, true); else todo.unshift(dc);
+      }
+      const vip = this.rollVip();
+      if (vip) todo.push({ kind: 'vip', vip, step: 0, good: 0 });
       if (story) {
         if (!S.stories[story.id]) S.stories[story.id] = { step: 0, good: 0, done: false };
         todo.push({ kind: 'story', story: story.id, step: S.stories[story.id].step });
@@ -482,6 +608,78 @@
       this.save();
       if (!todo.length && gm) this.closeDesk(); // the GM runs the whole day
       return true;
+    }
+
+    // ---- VIP and inspector days ----
+    rollVip() {
+      const S = this.S, rules = (this.chalDef && this.chalDef.rules) || {};
+      if (S.day < K.VIP_MIN_DAY || S.day - S.vipDay < K.VIP_GAP || this.ownedRooms().length < 2) return null;
+      const chance = clamp(0.06 + 0.004 * S.day + 0.01 * this.ownedRooms().length, 0, 0.22) * (rules.disasterMult ? 2 : 1);
+      if (RNG() >= chance) return null;
+      S.vipDay = S.day;
+      return pick(D.VIPS).id;
+    }
+    // The Resident Medium points at the best answer (and at a wrong one when he is miserable).
+    hint(card) {
+      const S = this.S;
+      if (!S.staff.medium || !card) return -1;
+      let idx = -1;
+      if (card.kind === 'vip') idx = D.VMAP[card.vip].steps[card.step].opts.findIndex((o) => o.ok);
+      else if (card.kind === 'disaster') idx = 2;
+      if (idx < 0) return -1;
+      return S.morale.medium < D.MORALE.low ? (idx + 1) % 3 : idx;
+    }
+    finishVip(v, good) {
+      const S = this.S, tier = good === 3 ? 'win' : good === 2 ? 'ok' : 'bad', o = v[tier];
+      const cash = Math.round(o.cash * this.costMult());
+      S.cash += cash;
+      S.comfort = clamp(S.comfort + o.comfort, 0, 100); S.spook = clamp(S.spook + o.spook, 0, 100);
+      o.stars.forEach((st2) => this.addReview(st2, v.guest, pick(D.REVIEWS[st2]).replace('{room}', 'the hotel'), ''));
+      if (o.mod) this.addMod(o.mod.name, o.mod.mult, o.mod.days);
+      S.log.push(v.guest + ': ' + o.t + (cash ? ' (' + (cash > 0 ? '+' : '-') + '$' + Math.abs(cash) + ')' : ''));
+      return { ending: o.t, tier, perk: o.mod ? o.mod.name + ': income x' + o.mod.mult + ' for ' + o.mod.days + ' days.' : '' };
+    }
+
+    // ---- disasters: multi-day crises with one decision a day ----
+    rollDisaster() {
+      const S = this.S, rules = (this.chalDef && this.chalDef.rules) || {}, mult = rules.disasterMult || 1;
+      if (S.disaster || S.day < (mult > 1 ? 3 : K.DISASTER_MIN_DAY) || S.day - S.disasterEnd < (mult > 1 ? 3 : K.DISASTER_GAP)) return;
+      if (RNG() >= K.DISASTER_CHANCE * mult) return;
+      S.disaster = { id: pick(D.DISASTERS).id, day: 0, sev: 2, start: S.day };
+    }
+    applyDisaster(card, optIdx, byGM) {
+      const S = this.S, d = S.disaster, def = D.DMAP[d.id], o = def.opts[optIdx];
+      const cash = Math.round(o[1] * this.costMult());
+      S.cash += cash; d.sev = clamp(d.sev + o[2], 0, 5); d.day++;
+      const note = def.name + ', day ' + d.day + ': ' + o[0] + (cash ? ' (-$' + Math.abs(cash) + ')' : '');
+      S.log.push((byGM ? 'GM handled ' : '') + note);
+      return { note, ok: o[2] <= 0 };
+    }
+    disasterLoss(revenue) {
+      const d = this.S.disaster;
+      return d ? Math.round(revenue * (D.DMAP[d.id].tick.rev || 0) * d.sev * (this.S.staff.watchman ? 0.7 : 1)) : 0;
+    }
+    // Overnight effects of an active crisis; ends it after the last day.
+    disasterNight(rec) {
+      const S = this.S, d = S.disaster;
+      if (!d) return;
+      const def = D.DMAP[d.id], t = def.tick, f = d.sev * (S.staff.watchman ? 0.7 : 1);
+      if (t.cond) this.ownedRooms().forEach((r) => { S.rooms[r.id].cond = clamp(S.rooms[r.id].cond - Math.round(t.cond * f), 0, 100); });
+      if (t.sat) this.occupied().forEach((r) => { const g = S.rooms[r.id].guest; g.sat = clamp(g.sat - Math.round(t.sat * f), 0, 100); });
+      if (t.comfort) S.comfort = clamp(S.comfort - t.comfort * f, 0, 100);
+      if (t.fake && d.sev >= 3) this.addReview(1, 'Anonymous account', pick(D.REVIEWS[1]).replace('{room}', 'the hotel'), '');
+      rec.disaster = { name: def.name, day: d.day, len: def.days.length, loss: rec.disasterLoss, end: '' };
+      if (d.day < def.days.length) return;
+      const tier = d.sev <= 1 ? 'good' : d.sev <= 3 ? 'mid' : 'bad';
+      if (tier === 'good') { S.comfort = clamp(S.comfort + 3, 0, 100); this.addMod('Crisis hero', 1.06, 7); }
+      else if (tier === 'bad') {
+        this.addMod(def.scar.name, def.scar.mult, def.scar.days);
+        if (def.scarCond) this.ownedRooms().forEach((r) => { S.rooms[r.id].cond = clamp(S.rooms[r.id].cond - def.scarCond, 0, 100); });
+        for (let i = 0; i < 2; i++) this.addReview(1, 'Disgruntled guest', pick(D.REVIEWS[1]).replace('{room}', 'the hotel'), '');
+      }
+      rec.disaster.end = def.ends[tier]; rec.disaster.tier = tier;
+      S.log.push(def.name + ' is over. ' + def.ends[tier]);
+      S.disaster = null; S.disasterEnd = S.day;
     }
 
     applyEvent(card, optIdx, byGM) {
@@ -500,7 +698,7 @@
       const room = S.rooms[card.room], g = room && room.guest;
       const cash = o.cash < 0 ? Math.round(o.cash * this.costMult() / (byStaff ? 2 : 1)) : o.cash;
       S.cash += cash;
-      if (g) g.sat = clamp(g.sat + (o.sat > 0 ? o.sat * (satMult || 1) : o.sat), 0, 100);
+      if (g) { g.sat = clamp(g.sat + (o.sat > 0 ? o.sat * (satMult || 1) : o.sat), 0, 100); g.cx = (g.cx || 0) + 1; g.cs = (g.cs || 0) + o.sat; }
       S.comfort = clamp(S.comfort + o.comfort * (S.upgrades.lobby && o.comfort > 0 ? 1.5 : 1), 0, 100);
       S.spook = clamp(S.spook + o.spook * (S.upgrades.spook && o.spook > 0 ? 1.5 : 1), 0, 100);
       S.stats.complaints++;
@@ -509,6 +707,7 @@
     }
 
     storyOpen(s) {
+      if (s.season) { const c = this.season(); return !!c && c.id === s.season; }
       if (s.stage7) return this.S.stage >= 7;
       if (s.prop) return this.prop(s.prop).owned;
       if (s.acq) return this.S.acq.length >= s.acq;
@@ -528,6 +727,14 @@
         Object.assign(result, this.applyEvent(card, optIdx, false));
       } else if (card.kind === 'branch') {
         Object.assign(result, this.applyBranchEvent(card, optIdx, false));
+      } else if (card.kind === 'disaster') {
+        Object.assign(result, this.applyDisaster(card, optIdx, false));
+      } else if (card.kind === 'vip') {
+        const v = D.VMAP[card.vip], opt = v.steps[card.step].opts[optIdx], good = (card.good || 0) + (opt.ok ? 1 : 0);
+        result.note = opt.note; result.ok = opt.ok;
+        S.log.push(v.guest + ': ' + opt.note);
+        if (card.step + 1 < v.steps.length) S.cards.splice(S.cardIdx + 1, 0, { kind: 'vip', vip: card.vip, step: card.step + 1, good });
+        else Object.assign(result, this.finishVip(v, good));
       } else {
         const story = D.STORIES.find((s) => s.id === card.story), prog = S.stories[card.story];
         const opt = story.steps[prog.step].opts[optIdx];
@@ -537,10 +744,10 @@
         prog.step++;
         if (prog.step >= story.steps.length) {
           prog.done = true; S.stats.stories++;
-          const tier = prog.good === 3 ? 'good' : prog.good === 2 ? 'ok' : 'bad';
+          const n = story.steps.length, tier = prog.good === n ? 'good' : prog.good >= n - 1 ? 'ok' : 'bad';
           result.ending = story.endings[tier]; result.tier = tier;
-          if (tier !== 'bad') this.shareGuest(story.id);
-          if (tier === 'good') { S.perks[story.perk] = true; result.perk = story.perkText; S.comfort = clamp(S.comfort + 3, 0, 100); S.spook = clamp(S.spook + 3, 0, 100); }
+          if (tier !== 'bad' && !story.season) this.shareGuest(story.id);
+          if (tier === 'good') { if (story.season) this.addMod(story.guest, 1.12, 14); else S.perks[story.perk] = true; result.perk = story.perkText; S.comfort = clamp(S.comfort + 3, 0, 100); S.spook = clamp(S.spook + 3, 0, 100); }
           else if (tier === 'ok') S.cash += 60;
           else { S.cash -= 40; S.comfort = clamp(S.comfort - 3, 0, 100); }
           S.log.push(result.ending);
@@ -555,11 +762,14 @@
     closeDesk() {
       const S = this.S;
       if (S.phase !== 'shift' || !this.shiftDone()) return false;
-      const rec = { day: S.day, revenue: 0, upkeep: this.upkeep(), wages: this.wages(), interest: 0, tax: 0, checkouts: [], quit: [], referrals: [] };
+      const rec = { day: S.day, revenue: 0, upkeep: this.upkeep(), wages: this.wages(), interest: 0, tax: 0, checkouts: [], quit: [], referrals: [], reviews: [], disasterLoss: 0 };
       this.occupied().forEach((r) => { rec.revenue += this.roomIncome(r.id, S.rooms[r.id].guest); });
-      rec.interest = Math.round(S.debt * K.INTEREST * (S.perks.auditor ? 0.9 : 1));
-      rec.tax = S.stage >= 2 ? Math.round(rec.revenue * K.TAX) : 0;
-      rec.expenses = rec.upkeep + rec.wages + rec.interest + rec.tax;
+      const acct = S.staff.accountant ? 1 - 0.2 * this.mor('accountant') : 1;
+      rec.interest = Math.round(S.debt * K.INTEREST * (S.perks.auditor ? 0.9 : 1) * acct);
+      rec.tax = S.stage >= 2 ? Math.round(rec.revenue * K.TAX * acct) : 0;
+      rec.disasterLoss = this.disasterLoss(rec.revenue);
+      rec.expenses = rec.upkeep + rec.wages + rec.interest + rec.tax + rec.disasterLoss;
+      this.disasterNight(rec);
 
       this.occupied().forEach((r) => {
         const room = S.rooms[r.id], g = room.guest, gt = D.GMAP[g.type];
@@ -572,6 +782,7 @@
           const sp = (gt.want === 'spooky' ? d * 1.2 : 0) + (D.RMAP[r.id].type === 'haunted' ? 0.5 : 0) + (d > 0 && gt.spookBonus ? gt.spookBonus : 0);
           S.spook = clamp(S.spook + sp * (S.upgrades.spook && sp > 0 ? 1.5 : 1), 0, 100);
           rec.checkouts.push({ name: gt.name, room: D.RMAP[r.id].name, sat: g.sat });
+          rec.reviews.push(this.makeReview(g, gt, r.id));
           if (gt.home && g.sat >= K.REFERRAL_SAT) {
             const homes = gt.home === 'acq' ? S.acq.filter((a) => this.prop(a.id).owned) : [this.propDef(gt.home)];
             const hd = pick(homes), hp = this.prop(hd.id);
@@ -591,6 +802,7 @@
       S.spook = clamp(S.spook - Math.max(0, S.spook - 50) * K.REP_DRIFT, 0, 100);
       this.runBranches(rec);
       this.moraleTick(rec);
+      this.modsTick();
       S.cash += rec.profit + rec.branchProfit - rec.regional;
       S.stats.revenue += rec.revenue; S.stats.expenses += rec.expenses;
       if (S.cash < 0) {
@@ -624,6 +836,11 @@
         S.review = { score: Math.round(score), grade: score >= 380 ? 'A' : score >= 250 ? 'B' : score >= 130 ? 'C' : 'D' };
         rec.review = S.review;
       }
+      if (S.chal && S.day >= S.chal.days && !S.chal.done) {
+        S.chal.done = true; S.chal.score = this.challengeScore(); S.chal.ok = S.chal.score >= this.chalDef.goal;
+        rec.challenge = { id: S.chal.id, score: S.chal.score, ok: S.chal.ok, days: S.day, code: Sim.code(S.chal.id, S.chal.score, S.day) };
+        Sim.recordResult(this.storage, S.chal.id, S.chal.score, S.day, S.chal.ok);
+      }
       S.ledger.push({ day: rec.day, revenue: rec.revenue, expenses: rec.expenses, profit: rec.profit, cash: S.cash });
       if (S.ledger.length > 60) S.ledger.shift();
       S.last = rec; S.phase = 'summary';
@@ -633,7 +850,7 @@
 
     nextDay() {
       const S = this.S;
-      if (S.phase !== 'summary') return false;
+      if (S.phase !== 'summary' || (S.chal && S.chal.done)) return false;
       S.day++; S.phase = 'plan'; S.cards = []; S.cardIdx = 0;
       if (S.stage >= 5 && S.day - S.offerDay >= K.OFFER_DAYS) this.refreshOffers();
       this.genArrivals();
@@ -661,8 +878,34 @@
       return T.step;
     }
 
+    // ---- challenge mode ----
+    challengeScore() {
+      const S = this.S;
+      return Math.round(S.cash - S.debt + 3 * (S.comfort + S.spook) + 40 * this.ratingAvg() + 50 * this.storiesSolved());
+    }
     devCash(n) { this.S.cash += n; this.save(); }
+
+    static records(storage) { try { return JSON.parse((storage && storage.getItem(K.CHAL_BEST_KEY)) || '{}') || {}; } catch (e) { return {}; } }
+    static recordResult(storage, id, score, days, ok) {
+      if (!storage) return;
+      const r = Sim.records(storage), cur = r[id];
+      if (!cur || score > cur.score) r[id] = { score, days, ok: !!ok || !!(cur && cur.ok) }; else if (ok) cur.ok = true;
+      try { storage.setItem(K.CHAL_BEST_KEY, JSON.stringify(r)); } catch (e) { /* blocked */ }
+    }
+    static completed(storage) { const r = Sim.records(storage); return Object.keys(r).filter((k) => r[k].ok).length; }
+    static code(id, score, days) { return 'HLC1:' + id + ':' + score + ':' + days; }
+    static parseCode(str) {
+      const m = /^HLC1:([a-z0-9]+):(-?\d+):(\d+)$/i.exec(String(str || '').trim());
+      return m && D.CHMAP[m[1]] ? { id: m[1], score: Number(m[2]), days: Number(m[3]) } : null;
+    }
   }
+
+  // Every rule method runs with this Sim's own random stream (Math.random, or the seeded one in a challenge).
+  Object.getOwnPropertyNames(Sim.prototype).forEach((n) => {
+    const f = Sim.prototype[n];
+    if (n === 'constructor' || typeof f !== 'function') return;
+    Sim.prototype[n] = function (...a) { const prev = RNG; RNG = this.rngFn; try { return f.apply(this, a); } finally { RNG = prev; } };
+  });
 
   const api = { Sim, newState };
   root.SimEngine = api;

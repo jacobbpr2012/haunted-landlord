@@ -1,12 +1,20 @@
-// Simulator Mode smoke test and cash curve: node tools/simsim.js [days]
+// Simulator Mode smoke test and cash curve: node tools/simsim.js [days] [challengeId]
+// Env: SEASON=halloween forces a season (default none), EXTRAS=1 also buys room themes and ghost staff.
+// With a challenge id (solo, oneroom, crash, storm) it plays that seeded scenario and prints the score and share code.
 // A simple bot assigns best-fit rooms, picks the sensible complaint fix, and buys rooms/staff when affordable.
 const D = require('../game/sim/data.js');
 const { Sim } = require('../game/sim/engine.js');
 
 const days = Number(process.argv[2] || 30);
-const g = new Sim(null);
+const chalId = process.argv[3] || null;
+const g = new Sim(null, chalId ? { challenge: chalId, fresh: true } : undefined);
 const S = g.S;
-for (let d = 0; d < days; d++) {
+g.seasonOverride = process.env.SEASON || "none";
+for (let d = 0; d < days && !(S.chal && S.chal.done); d++) {
+  if (process.env.EXTRAS) {
+    g.ownedRooms().forEach((r) => { if (!S.rooms[r.id].theme && S.cash > g.themeCost(r.id) + 400) g.dressRoom(r.id, D.THEMES[(r.id.length + d) % D.THEMES.length].id); });
+    if (S.stage >= 3 && S.cash > 2500) D.GHOST_STAFF.forEach((x) => g.hire(x.id));
+  }
   // buy things when rich enough
   for (const r of D.ROOMS) if (r.cost && !S.rooms[r.id].owned && S.cash > r.cost + 150) g.buyRoom(r.id);
   for (const u of D.UPGRADES) if (!S.upgrades[u.id] && S.cash > u.cost + 300) g.buyUpgrade(u.id);
@@ -42,7 +50,7 @@ for (let d = 0; d < days; d++) {
     if (best && bm >= 0.4) g.assign(a.id, best.id);
   }
   g.openDesk();
-  while (g.currentCard()) g.resolveCard(1);
+  while (g.currentCard()) { const c = g.currentCard(); g.resolveCard(c.kind === 'vip' || c.kind === 'disaster' ? Math.max(0, g.hint(c)) || 1 : 1); }
   if (S.phase === 'shift') g.closeDesk();
   const L = S.last;
   if ((d + 1) % 5 === 0 || d === days - 1) {
@@ -50,4 +58,6 @@ for (let d = 0; d < days; d++) {
   }
   g.nextDay();
 }
+if (S.chal) console.log('challenge', S.chal.id, 'score', S.chal.score, 'goal', g.chalDef.goal, S.chal.ok ? 'REACHED' : 'missed', Sim.code(S.chal.id, S.chal.score, S.day));
+console.log('rating', g.ratingAvg().toFixed(2), 'reviews', S.reviews.length, 'mods', S.mods.length);
 console.log('review:', JSON.stringify(S.review), 'bailouts:', S.stats.bailouts);
