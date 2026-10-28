@@ -1,0 +1,15 @@
+{
+  "name": "haunted-landlord",
+  "version": "0.1.0",
+  "description": "Haunted Landlord - a browser idle game (desktop test shell)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "sim": "node tools/sim.js"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "electron": "^45.1.0"
+  }
+}

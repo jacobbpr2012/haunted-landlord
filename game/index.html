@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'">
+<title>Haunted Landlord</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<main class="home">
+  <header class="hero">
+    <h1>Haunted Landlord</h1>
+    <p class="pitch">Your tenants are dead, your rent is not.</p>
+    <p class="intro">Own a house full of ghosts and collect what they owe. Pick how you want to play.</p>
+  </header>
+
+  <section class="modes-grid" aria-label="Game modes">
+    <article class="mode" id="modeIdle">
+      <div class="mode-art" aria-hidden="true">
+        <svg viewBox="0 0 120 80"><rect x="22" y="30" width="76" height="46" rx="3" fill="#271a45" stroke="#46327a"/><path d="M14 32 60 6l46 26z" fill="#31225a" stroke="#46327a"/><path d="M52 76V56a8 8 0 0 1 16 0v20z" fill="#2a170d" stroke="#8a5d3b"/><rect x="30" y="40" width="12" height="12" rx="2" fill="#ffcf70"/><rect x="78" y="40" width="12" height="12" rx="2" fill="#ffcf70" opacity=".5"/><path d="M98 18c0-8 12-8 12 0v12l-3-2-3 2-3-2-3 2z" fill="#efe9ff"/></svg>
+      </div>
+      <h2>Idle Mode</h2>
+      <p class="tag-line">Knock, collect, expand.</p>
+      <p>Ring the front desk bell for rent, hire ghost tenants who pay while you are away, and fill every room. Exorcise the house to start over with bonus Essence.</p>
+      <ul>
+        <li>Short sessions, big numbers</li>
+        <li>Seances, seasons, Codex and rival landlords</li>
+        <li>Keeps earning while the tab is closed</li>
+      </ul>
+      <div class="mode-foot">
+        <a class="btn" id="playIdle" href="idle.html">Play Idle</a>
+        <span class="resume" id="resume" hidden></span>
+      </div>
+    </article>
+
+    <article class="mode" id="modeSim">
+      <div class="mode-art" aria-hidden="true">
+        <svg viewBox="0 0 120 80"><rect x="8" y="10" width="104" height="66" rx="3" fill="#271a45" stroke="#46327a"/><g fill="#1d1433" stroke="#46327a"><rect x="14" y="16" width="30" height="24"/><rect x="45" y="16" width="30" height="24"/><rect x="76" y="16" width="30" height="24"/><rect x="14" y="44" width="30" height="26"/><rect x="45" y="44" width="30" height="26"/><rect x="76" y="44" width="30" height="26"/></g><rect x="19" y="21" width="8" height="10" fill="#ffcf70"/><rect x="50" y="49" width="8" height="10" fill="#3fd6c0"/><rect x="81" y="21" width="8" height="10" fill="#ff8ac8"/></svg>
+      </div>
+      <h2>Simulator Mode <span class="badge">Early preview</span></h2>
+      <p class="tag-line">Run the house, hands on.</p>
+      <p>Same haunted house, but you manage it directly. Place tenants in rooms, handle repairs and incidents, and keep the books balanced one day at a time.</p>
+      <ul>
+        <li>Assign ghosts to rooms and watch them interact</li>
+        <li>Deal with hauntings, complaints and inspections</li>
+        <li>Shares the same tenants and Codex as Idle</li>
+      </ul>
+      <div class="mode-foot">
+        <a class="btn" id="playSim" href="sim.html">Play Simulator</a>
+      </div>
+    </article>
+  </section>
+
+  <footer class="home-foot">
+    <p>Both modes share the same world. Your Idle progress is saved in this browser.</p>
+    <p style="margin-top:10px"><label for="themeSel">Theme </label><span id="themeBox"></span></p>
+  </footer>
+</main>
+<script src="home.js"></script>
+</body>
+</html>

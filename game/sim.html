@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'">
+<title>Haunted Landlord - Simulator</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="sim.css">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Haunted Landlord: Simulator</h1>
+      <span id="hotelName" class="house-name"></span>
+    </div>
+    <div class="wallet">
+      <div class="rent"><span class="coin"></span><span id="cash">0</span></div>
+      <div id="sub" class="rps"></div>
+    </div>
+    <div class="tools">
+      <a class="chip" href="index.html" id="homeLink">Home</a>
+      <span class="chip" id="dayChip">Day 1</span>
+      <span class="chip" id="stageChip">Stage 1: Solo desk</span>
+      <button id="devCash" class="chip" hidden>+$1000 (dev)</button>
+    </div>
+  </header>
+  <div class="counter"><span class="bell-ic" aria-hidden="true"></span>Front desk, open all hours</div>
+  <div id="coach" class="coach" hidden></div>
+
+  <div class="reps">
+    <div><span>Comfort</span><div class="bar"><i id="repComfort"></i></div></div>
+    <div><span>Spook</span><div class="bar"><i id="repSpook"></i></div></div>
+  </div>
+
+  <main class="layout">
+    <section class="house">
+      <h2 class="sect-h">Key rack</h2>
+      <div id="rooms" class="sim-rooms"></div>
+    </section>
+    <section class="panel">
+      <nav id="tabs" class="tabs" role="tablist"></nav>
+      <div id="tabBody" class="tab-body"></div>
+    </section>
+  </main>
+</div>
+<script src="shared.js"></script>
+<script src="sim/data.js"></script>
+<script src="sim/engine.js"></script>
+<script src="sim/ui.js"></script>
+</body>
+</html>

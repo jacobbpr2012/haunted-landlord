@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; script-src 'self'">
+<title>Haunted Landlord</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Haunted Landlord</h1>
+      <button id="houseName" class="house-name" title="Click to rename your house"></button>
+    </div>
+    <div class="wallet">
+      <div class="rent"><span class="coin"></span><span id="rent">0</span></div>
+      <div id="rps" class="rps">0 rent / sec</div>
+    </div>
+    <div class="tools">
+      <a class="chip" href="index.html">Home</a>
+      <button id="btnDaily" class="chip" hidden>Daily Haunting</button>
+      <button id="btnMute" class="chip" aria-label="Toggle sound">Sound: on</button>
+    </div>
+  </header>
+  <div class="counter"><span class="bell-ic" aria-hidden="true"></span>Front desk, open all hours</div>
+
+  <div id="buffs" class="buffs"></div>
+  <div id="seasonBar" class="season-bar" hidden></div>
+  <div id="eventBar" class="event-bar" hidden></div>
+  <div id="coach" class="coach" hidden></div>
+
+  <main class="layout">
+    <section id="house" class="house">
+      <svg id="scene" viewBox="0 0 400 150" aria-label="The haunted house"></svg>
+      <div id="rooms" class="rooms"></div>
+      <button id="door" class="door"><span class="bell-ic" aria-hidden="true"></span><span class="door-label">Ring for rent</span></button>
+    </section>
+
+    <section class="panel">
+      <nav id="tabs" class="tabs" role="tablist"></nav>
+      <div id="tabBody" class="tab-body"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span id="worldwide"></span>
+    <div id="comm" class="comm"></div>
+  </footer>
+</div>
+
+<div id="floaters"></div>
+<div id="toasts"></div>
+<div id="modal" class="modal" hidden><div class="box" role="dialog" aria-modal="true"></div></div>
+
+<script src="data.js"></script>
+<script src="codex.js"></script>
+<script src="shared.js"></script>
+<script src="engine.js"></script>
+<script src="audio.js"></script>
+<script src="share.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>

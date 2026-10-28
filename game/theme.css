@@ -1,0 +1,112 @@
+/* Themes and the front desk layer. Default is Midnight concierge; others switch with <html data-theme="...">.
+   Every colour in style.css, sim.css and home.css comes from these variables. */
+:root {
+  --bg: #140d22; --bg2: #1d1433; --card: #271a45; --card2: #31225a; --line: #46327a; --deep: #170f2b; --glow-top: #2b1b52;
+  --text: #efe9ff; --dim: #a99bd0; --teal: #3fd6c0; --teal2: #22a896; --on-teal: #052a25; --gold: #ffd24a; --glow: #ffcf70;
+  --pink: #ff8ac8; --pink2: #d9569f; --on-pink: #3a0a25; --warn: #ff7a7a; --ev1: #4a2a7a; --ev2: #35205c;
+  --wood1: #5a3a2a; --wood2: #3d2519; --wood-dark: #2a170d; --wood-text: #ffe2b8; --brass: #8a5d3b;
+  --toast: #2c1d52f2; --toast-gold: #4a3a10f2; --off: #3a2f5a; --off-text: #8a7db0;
+  --font: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif; --r: 10px; --rlg: 16px; --pill: 999px; --brand-tr: none; --brand-ls: .5px;
+}
+[data-theme="deco"] {
+  --bg: #0d0d12; --bg2: #14141b; --card: #1a1a24; --card2: #242432; --line: #6e5a24; --deep: #08080c; --glow-top: #1f1b10;
+  --text: #f4ead0; --dim: #b9a97c; --teal: #d4af37; --teal2: #a8892a; --on-teal: #14110a; --gold: #f1d27a; --glow: #f1d27a;
+  --pink: #7fd1c4; --pink2: #4fa89b; --on-pink: #06201c; --warn: #ff8a7a; --ev1: #2a2412; --ev2: #1a1608;
+  --wood1: #2a2412; --wood2: #1a160a; --wood-dark: #0d0b05; --wood-text: #f1d27a; --brass: #b8923a;
+  --toast: #1a1a24f2; --toast-gold: #2a2412f2; --off: #2a2a34; --off-text: #7d7757;
+  --font: 'Trebuchet MS', 'Segoe UI', sans-serif; --r: 0px; --rlg: 0px; --pill: 0px; --brand-tr: uppercase; --brand-ls: 2px;
+}
+[data-theme="neon"] {
+  --bg: #0b0a1a; --bg2: #130f2b; --card: #1a1233; --card2: #251a48; --line: #7a2a68; --deep: #07061a; --glow-top: #1f0f3d;
+  --text: #e9f9ff; --dim: #8fb7d4; --teal: #38e8ff; --teal2: #1fb5cf; --on-teal: #02222a; --gold: #ffe14a; --glow: #38e8ff;
+  --pink: #ff4fa3; --pink2: #e0388f; --on-pink: #2a0618; --warn: #ff6b6b; --ev1: #3a1655; --ev2: #24103a;
+  --wood1: #24123d; --wood2: #170a2a; --wood-dark: #0f061c; --wood-text: #ff9fd2; --brass: #ff4fa3;
+  --toast: #1a1233f2; --toast-gold: #3a2f10f2; --off: #2a2244; --off-text: #8f8bb8;
+  --font: 'Courier New', ui-monospace, monospace; --r: 4px; --rlg: 6px; --pill: 4px; --brand-tr: none; --brand-ls: 1px;
+}
+[data-theme="victorian"] {
+  --bg: #2a0f17; --bg2: #36151f; --card: #4a1d2a; --card2: #5c2736; --line: #7a5238; --deep: #200b11; --glow-top: #46202c;
+  --text: #f6e9d2; --dim: #cfae92; --teal: #e8c27a; --teal2: #c19b52; --on-teal: #2a1608; --gold: #f3d58f; --glow: #f3d58f;
+  --pink: #a8d5a2; --pink2: #7fae79; --on-pink: #11230f; --warn: #ff8a80; --ev1: #5a2a3a; --ev2: #401a28;
+  --wood1: #5a3420; --wood2: #3b2112; --wood-dark: #251409; --wood-text: #f6e9d2; --brass: #b08a4a;
+  --toast: #4a1d2af2; --toast-gold: #5a4418f2; --off: #44272f; --off-text: #9b7f6f;
+  --font: Georgia, 'Times New Roman', serif; --r: 6px; --rlg: 10px; --pill: 8px; --brand-tr: none; --brand-ls: .5px;
+}
+[data-theme="pastel"] {
+  --bg: #f6dcea; --bg2: #f9e6f0; --card: #fff3f8; --card2: #fde4f0; --line: #d98cb0; --deep: #efc6dc; --glow-top: #ffe9f3;
+  --text: #3a1a3f; --dim: #6b3f6e; --teal: #8a3a7a; --teal2: #6e2c61; --on-teal: #ffffff; --gold: #7d3f0d; --glow: #ffd9a0;
+  --pink: #16675f; --pink2: #0f4944; --on-pink: #ffffff; --warn: #c0392b; --ev1: #fbd3e6; --ev2: #f6bcd6;
+  --wood1: #e8a9c4; --wood2: #d98cb0; --wood-dark: #b86a93; --wood-text: #3a1a3f; --brass: #c27aa3;
+  --toast: #fff3f8f2; --toast-gold: #ffe9b8f2; --off: #ecd0de; --off-text: #7a5a70;
+  --font: 'Trebuchet MS', 'Segoe UI', sans-serif; --r: 14px; --rlg: 20px; --pill: 999px; --brand-tr: none; --brand-ls: .5px;
+}
+[data-theme="noir"] {
+  --bg: #0f1012; --bg2: #16171a; --card: #1c1e22; --card2: #26282d; --line: #3a3d44; --deep: #0a0a0c; --glow-top: #1a1a1e;
+  --text: #e8e6e0; --dim: #8c8f96; --teal: #ffb347; --teal2: #d98f2a; --on-teal: #1a1204; --gold: #ffcf70; --glow: #ffb347;
+  --pink: #c9ced6; --pink2: #9ba1ab; --on-pink: #121316; --warn: #ff7a6a; --ev1: #2a2a30; --ev2: #1e1e22;
+  --wood1: #26272b; --wood2: #17181b; --wood-dark: #0c0c0e; --wood-text: #c9ced6; --brass: #6b6e75;
+  --toast: #1c1e22f2; --toast-gold: #3a2e14f2; --off: #2a2c31; --off-text: #8d9098;
+  --font: 'Courier New', ui-monospace, monospace; --r: 2px; --rlg: 3px; --pill: 2px; --brand-tr: none; --brand-ls: 1px;
+}
+[data-theme="seventies"] {
+  --bg: #2b1a0e; --bg2: #38220f; --card: #4a2c14; --card2: #5e3a1b; --line: #8a5a2b; --deep: #20120a; --glow-top: #4a2a12;
+  --text: #f7e6c4; --dim: #d6b886; --teal: #f59a3a; --teal2: #c46c12; --on-teal: #2a1200; --gold: #ffc857; --glow: #ffc857;
+  --pink: #b0cd4a; --pink2: #77912a; --on-pink: #1a2205; --warn: #ff7a5a; --ev1: #6a3a16; --ev2: #4a2a10;
+  --wood1: #6b3f1c; --wood2: #4a2a12; --wood-dark: #2f1a0a; --wood-text: #f7e6c4; --brass: #b57a35;
+  --toast: #4a2c14f2; --toast-gold: #5a4414f2; --off: #4a3220; --off-text: #b89a74;
+  --font: Georgia, 'Times New Roman', serif; --r: 8px; --rlg: 12px; --pill: 999px; --brand-tr: none; --brand-ls: .5px;
+}
+[data-theme="overlook"] {
+  --bg: #1a0a0c; --bg2: #240e11; --card: #34131a; --card2: #471a23; --line: #7a1f27; --deep: #120608; --glow-top: #3a1016;
+  --text: #fbeaea; --dim: #d29a9e; --teal: #4fd1c5; --teal2: #2fa89d; --on-teal: #04211e; --gold: #e8d36a; --glow: #e8d36a;
+  --pink: #ff6b82; --pink2: #e0566a; --on-pink: #2a0610; --warn: #ffb36a; --ev1: #55141f; --ev2: #3a0f17;
+  --wood1: #4a1019; --wood2: #310a11; --wood-dark: #1f0509; --wood-text: #fbeaea; --brass: #a3262f;
+  --toast: #34131af2; --toast-gold: #4a3a10f2; --off: #3d1c22; --off-text: #b08489;
+  --font: 'Trebuchet MS', 'Segoe UI', sans-serif; --r: 0px; --rlg: 2px; --pill: 0px; --brand-tr: none; --brand-ls: .5px;
+}
+[data-theme="bnb"] {
+  --bg: #efe6cf; --bg2: #f6eed9; --card: #fbf5e4; --card2: #f0e4c4; --line: #b9a57a; --deep: #e3d6b2; --glow-top: #f7f0dc;
+  --text: #3a3a24; --dim: #5a583c; --teal: #345c2f; --teal2: #2e5129; --on-teal: #ffffff; --gold: #8f3f27; --glow: #f0c36a;
+  --pink: #8f4a0c; --pink2: #7a4210; --on-pink: #ffffff; --warn: #b3261e; --ev1: #f0e0b0; --ev2: #e6d29a;
+  --wood1: #d9c79a; --wood2: #c7b27f; --wood-dark: #9b8754; --wood-text: #3a3a24; --brass: #b08a3a;
+  --toast: #fbf5e4f2; --toast-gold: #f6e2a6f2; --off: #e4d9b8; --off-text: #6f6850;
+  --font: Georgia, 'Times New Roman', serif; --r: 16px; --rlg: 22px; --pill: 999px; --brand-tr: none; --brand-ls: .5px;
+}
+[data-theme="liner"] {
+  --bg: #08172b; --bg2: #0d2342; --card: #12304f; --card2: #1a4066; --line: #2f6590; --deep: #061221; --glow-top: #123a63;
+  --text: #e6f3ff; --dim: #8fb4d4; --teal: #6fe0d0; --teal2: #3fb8a8; --on-teal: #03211d; --gold: #ffc857; --glow: #ffc857;
+  --pink: #ff8f6b; --pink2: #d96a45; --on-pink: #2a0f06; --warn: #ff7a7a; --ev1: #173f6b; --ev2: #12335a;
+  --wood1: #1f4a73; --wood2: #0e2540; --wood-dark: #07182c; --wood-text: #ffc857; --brass: #c8a24a;
+  --toast: #12304ff2; --toast-gold: #4a3a10f2; --off: #1d3a5a; --off-text: #6f94b8;
+  --font: 'Trebuchet MS', 'Segoe UI', sans-serif; --r: 12px; --rlg: 16px; --pill: 999px; --brand-tr: none; --brand-ls: .5px;
+}
+
+/* ---- front desk layer: sign plaque, wooden counter, key rack, ledger tabs ---- */
+.top { background: var(--card); border: 1px solid var(--line); border-bottom: 3px solid var(--brass); border-radius: var(--rlg) var(--rlg) 0 0; padding: 12px 16px; }
+.brand h1 { color: var(--gold); text-transform: var(--brand-tr); letter-spacing: var(--brand-ls); }
+.counter { display: flex; align-items: center; gap: 8px; padding: 8px 16px; margin-bottom: 4px; font-size: 13px; letter-spacing: .5px; color: var(--wood-text); background: linear-gradient(var(--wood1), var(--wood2)); border: 1px solid var(--brass); border-top: 0; border-radius: 0 0 var(--rlg) var(--rlg); }
+.counter .sp { flex: 1; }
+.bell-ic { position: relative; display: inline-block; width: 22px; height: 18px; margin: 0 6px 4px 0; vertical-align: middle; background: currentColor; border-radius: 11px 11px 3px 3px; }
+.bell-ic::before { content: ''; position: absolute; left: 50%; top: -4px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: currentColor; }
+.bell-ic::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: currentColor; }
+.counter .bell-ic { margin-bottom: 2px; }
+
+.rooms, .sim-rooms { background: var(--wood2); border-top: 3px solid var(--brass); }
+.room, .sroom { border: 2px solid var(--brass); }
+.room h3, .sroom h3 { letter-spacing: .5px; }
+.sroom { position: relative; }
+.sroom:not(.locked)::after { content: ''; position: absolute; right: 8px; bottom: 8px; width: 9px; height: 9px; border: 2px solid var(--brass); border-radius: 50%; box-shadow: -10px 0 0 -4px var(--brass); opacity: .8; }
+.house > .sect-h { color: var(--wood-text); background: var(--wood2); padding-bottom: 6px; margin: 0; }
+
+.tabs { background: var(--deep); padding: 6px 6px 0; gap: 2px; border-bottom: 3px solid var(--brass); }
+.tabs button { border: 1px solid transparent; border-bottom: 0; border-radius: var(--r) var(--r) 0 0; min-height: 40px; }
+.tabs button.on { background: var(--card); border-color: var(--line); color: var(--gold); margin-bottom: -3px; padding-bottom: 15px; }
+.tab-body { background-image: repeating-linear-gradient(transparent 0 27px, color-mix(in srgb, var(--line) 18%, transparent) 27px 28px); }
+.btn .bell-ic { margin-bottom: 2px; }
+.house, .panel { box-shadow: 0 0 0 1px var(--line); }
+
+/* keep the header money readable in wide fonts on phones */
+.top { grid-template-columns: minmax(0, 1fr) auto; }
+.rent { font-size: clamp(24px, 8vw, 34px); }
+.wallet { min-width: 0; }
+.brand { min-width: 0; }
