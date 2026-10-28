@@ -11,7 +11,7 @@
     BASE_OFFLINE_CAP: 8 * 3600,   // seconds of offline earnings, before bonuses
     OFFLINE_RATE: 0.6,            // fraction of normal income earned while away
     CLICK_RPS_SHARE: 0.05,        // clicks also pay 5% of rent/sec so they stay relevant
-    SHARE_URL: 'hauntedlandlord.example', // TODO: replace with the real short link
+    SHARE_URL: 'jacobbpr2012.github.io/haunted-landlord', // GitHub Pages; swap for a custom domain later
   };
 
   D.RARITY_RANK = { Common: 0, Uncommon: 1, Rare: 2, Secret: 3, Legendary: 4 };
